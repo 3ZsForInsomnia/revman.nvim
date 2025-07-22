@@ -1,87 +1,84 @@
-local health = vim.health or require("health")
 local config = require("revman.config")
 local utils = require("revman.utils")
 
 local function check_sqlite()
 	local ok, sqlite = pcall(require, "sqlite")
 	if ok and sqlite then
-		health.report_ok("sqlite.lua is installed")
+		vim.health.ok("sqlite.lua is installed")
 	else
-		health.report_error("sqlite.lua is not installed. Install kkharji/sqlite.lua")
+		vim.health.error("sqlite.lua is not installed. Install kkharji/sqlite.lua")
 	end
 end
 
 local function check_db_schema()
 	local ok, db_create = pcall(require, "revman.db.create")
 	if not ok then
-		health.report_error("Could not load revman.db.create: " .. tostring(db_create))
+		vim.health.error("Could not load revman.db.create: " .. tostring(db_create))
 		return
 	end
 	local db_path = config.get().database.path
 	local stat = vim.loop.fs_stat(db_path)
+	if not (stat and stat.type == "file") then
+		-- Try to create the DB/schema
+		local ok_schema, err = pcall(db_create.ensure_schema)
+		if not ok_schema then
+			vim.health.error("Failed to create DB schema: " .. tostring(err))
+			return
+		end
+		stat = vim.loop.fs_stat(db_path)
+	end
 	if stat and stat.type == "file" then
-		health.report_ok("Database file exists: " .. db_path)
+		vim.health.ok("Database file exists: " .. db_path)
 	else
-		health.report_warn("Database file does not exist yet: " .. db_path)
-	end
-	-- Try to ensure schema and review statuses
-	local ok_schema, err = pcall(db_create.ensure_schema)
-	if ok_schema then
-		health.report_ok("Database schema is valid")
-	else
-		health.report_error("Failed to ensure DB schema: " .. tostring(err))
-	end
-	local ok_status, err2 = pcall(db_create.ensure_review_statuses)
-	if ok_status then
-		health.report_ok("Review statuses are present")
-	else
-		health.report_error("Failed to ensure review statuses: " .. tostring(err2))
+		vim.health.error("Database file does not exist and could not be created: " .. db_path)
 	end
 end
 
 local function check_gh()
 	if utils.is_gh_available() then
-		health.report_ok("GitHub CLI (gh) is installed and authenticated")
+		vim.health.ok("GitHub CLI (gh) is installed and authenticated")
 	else
-		health.report_error("GitHub CLI (gh) is not available or not authenticated")
+		vim.health.error("GitHub CLI (gh) is not available or not authenticated")
 	end
 end
 
 local function check_config()
 	local opts = config.get()
 	if opts.database and opts.database.path then
-		health.report_ok("Database path: " .. opts.database.path)
+		vim.health.ok("Database path: " .. opts.database.path)
 	else
-		health.report_error("Database path is not set in config")
+		vim.health.error("Database path is not set in config")
 	end
 	if opts.background and type(opts.background.frequency) == "number" then
-		health.report_ok("Background sync frequency: " .. tostring(opts.background.frequency))
+		vim.health.ok("Background sync frequency: " .. tostring(opts.background.frequency))
 	else
-		health.report_warn("Background sync frequency not set (default will be used)")
+		vim.health.warn("Background sync frequency not set (default will be used)")
 	end
 	if opts.keymaps and opts.keymaps.save_notes then
-		health.report_ok("Save notes keymap: " .. opts.keymaps.save_notes)
+		vim.health.ok("Save notes keymap: " .. opts.keymaps.save_notes)
 	else
-		health.report_warn("Save notes keymap not set (default will be used)")
+		vim.health.warn("Save notes keymap not set (default will be used)")
 	end
 end
 
 local function check_octonvim()
-	local ok, _ = pcall(function()
-		vim.fn["octo#util#is_octonvim"]()
-	end)
+	local ok, _ = pcall(require, "octo")
 	if ok then
-		health.report_ok("Octo.nvim is installed (for PR review UI)")
+		vim.health.ok("Octo.nvim is installed (for PR review UI)")
 	else
-		health.report_warn("Octo.nvim not detected. PR review UI will not be available.")
+		vim.health.warn("Octo.nvim not detected. PR review UI will not be available.")
 	end
 end
 
-return function()
-	health.start("revman.nvim")
+local M = {}
+
+M.check = function()
+	vim.health.start("revman.nvim")
 	check_sqlite()
 	check_db_schema()
 	check_gh()
 	check_config()
 	check_octonvim()
 end
+
+return M

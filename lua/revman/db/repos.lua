@@ -1,9 +1,10 @@
 local M = {}
+
 local get_db = require("revman.db.create").get_db
 
-function M.add(name)
+function M.add(name, directory)
 	local db = get_db()
-	db:insert("repositories", { name = name })
+	db:insert("repositories", { name = name, directory = directory })
 	db:close()
 end
 
@@ -29,7 +30,7 @@ end
 
 function M.set_reminder_days(id, days)
 	local db = get_db()
-	db:update("repositories", { reminder_days = days }, { id = id })
+	db:update("repositories", { set = { reminder_days = days }, where = { id = id } })
 	db:close()
 end
 
@@ -45,6 +46,12 @@ function M.list()
 	local rows = db:select("repositories")
 	db:close()
 	return rows
+end
+
+function M.update(id, updates)
+	local db = get_db()
+	db:update("repositories", { set = updates, where = { id = id } })
+	db:close()
 end
 
 return M

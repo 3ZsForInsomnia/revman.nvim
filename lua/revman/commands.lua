@@ -4,10 +4,11 @@ local db_status = require("revman.db.status")
 local db_notes = require("revman.db.notes")
 local config = require("revman.config")
 local utils = require("revman.utils")
-local telescope_prs = require("revman.ui.prs")
-local telescope_authors = require("revman.ui.authors")
-local telescope_repos = require("revman.ui.repos")
+local telescope_prs = require("revman.telescope.prs")
+local telescope_authors = require("revman.telescope.users")
+local telescope_repos = require("revman.telescope.repos")
 local sync = require("revman.sync")
+local log = require("revman.log")
 
 local M = {}
 
@@ -49,9 +50,9 @@ end
 vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()
 	local res, err = workflows.sync_all_prs()
 	if res then
-		print("Synced PRs: " .. vim.inspect(res))
+		log.info("Synced PRs: " .. vim.inspect(res))
 	else
-		print("Error syncing PRs: " .. (err or "unknown"))
+		log.error("Error syncing PRs: " .. (err or "unknown"))
 	end
 end, {})
 
@@ -60,13 +61,14 @@ vim.api.nvim_create_user_command("RevmanSyncPR", function(opts)
 	local pr_number = tonumber(opts.args)
 	if not pr_number then
 		print("Usage: :RevmanSyncPR {pr_number}")
+		-- TODO: this should allow no args for normal prompting of rfp id or number
 		return
 	end
 	local pr_id, err = workflows.sync_pr(pr_number)
 	if pr_id then
-		print("PR synced: " .. pr_id)
+		log.info("PR synced: " .. pr_id)
 	else
-		print("Error syncing PR: " .. (err or "unknown"))
+		log.error("Error syncing PR: " .. (err or "unknown"))
 	end
 end, { nargs = 1 })
 
@@ -99,7 +101,22 @@ end, {})
 vim.api.nvim_create_user_command("RevmanReviewPR", function(opts)
 	resolve_pr(opts.args, function(pr)
 		if not pr then
-			print("No PR selected.")
+			local pr_number = tonumber(opts.args)
+			if pr_number then
+				local repo_name = utils.get_current_repo()
+				local pr_data = require("revman.github.data").get_pr(pr_number, repo_name)
+				if pr_data then
+					local repo_row = utils.ensure_repo(repo_name)
+					local pr_db_row = require("revman.github.prs").extract_pr_fields(pr_data)
+					pr_db_row.repo_id = repo_row.id
+					pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
+					db_prs.add(pr_db_row)
+					pr = db_prs.get_by_repo_and_number(repo_row.id, pr_number)
+				end
+			end
+		end
+		if not pr then
+			print("No PR selected or found.")
 			return
 		end
 		workflows.select_pr_for_review(pr.id)
@@ -110,7 +127,7 @@ end, { nargs = "?" })
 vim.api.nvim_create_user_command("RevmanSetStatus", function(opts)
 	resolve_pr(opts.args, function(pr)
 		if not pr then
-			print("No PR selected.")
+			log.error("No PR selected for status update.")
 			return
 		end
 		local statuses = {}
@@ -120,7 +137,7 @@ vim.api.nvim_create_user_command("RevmanSetStatus", function(opts)
 		vim.ui.select(statuses, { prompt = "Select status" }, function(choice)
 			if choice then
 				workflows.set_status(pr.id, choice)
-				print("Status updated to: " .. choice)
+				log.info("PR #" .. pr.number .. " status updated to: " .. choice)
 			end
 		end)
 	end)
@@ -130,7 +147,7 @@ end, { nargs = "?" })
 vim.api.nvim_create_user_command("RevmanAddNote", function(opts)
 	resolve_pr(opts.args, function(pr)
 		if not pr then
-			print("No PR selected.")
+			log.error("No PR selected for note.")
 			return
 		end
 		local note = db_notes.get_by_pr_id(pr.id)
@@ -151,7 +168,7 @@ vim.api.nvim_create_user_command("RevmanAddNote", function(opts)
 			else
 				db_notes.add(pr.id, content, now)
 			end
-			print("Note saved for PR #" .. pr.number)
+			log.info("Note saved for PR #" .. pr.number)
 			vim.api.nvim_buf_delete(buf, { force = true })
 		end, { buffer = buf })
 	end)
@@ -161,7 +178,7 @@ end, { nargs = "?" })
 vim.api.nvim_create_user_command("RevmanShowNotes", function(opts)
 	resolve_pr(opts.args, function(pr)
 		if not pr then
-			print("No PR selected.")
+			log.error("No PR selected for showing notes.")
 			return
 		end
 		local note = db_notes.get_by_pr_id(pr.id)
@@ -170,7 +187,7 @@ vim.api.nvim_create_user_command("RevmanShowNotes", function(opts)
 			vim.api.nvim_buf_set_lines(0, 0, -1, false, vim.split(note.content, "\n"))
 			vim.api.nvim_buf_set_option(0, "modifiable", false)
 		else
-			print("No note for this PR.")
+			log.info("No note found for PR #" .. pr.number)
 		end
 	end)
 end, { nargs = "?" })
@@ -179,7 +196,8 @@ end, { nargs = "?" })
 vim.api.nvim_create_user_command("RevmanNudgePRs", function()
 	local prs = require("revman.logic.prs").list_prs_needing_nudge(db_prs, db_repos, utils)
 	if #prs == 0 then
-		print("No PRs need a nudge!")
+		log.notify("No PRs need a nudge!", "info")
+		log.info("No PRs need a nudge!")
 		return
 	end
 	for _, pr in ipairs(prs) do
@@ -190,12 +208,88 @@ end, {})
 -- 13. Toggle background sync
 vim.api.nvim_create_user_command("RevmanEnableBackgroundSync", function()
 	sync.enable_background_sync()
-	print("Background sync enabled.")
+	log.info("Background sync enabled.")
+	log.notify("Background sync enabled.", "info")
 end, {})
 
 vim.api.nvim_create_user_command("RevmanDisableBackgroundSync", function()
 	sync.disable_background_sync()
-	print("Background sync disabled.")
+	log.info("Background sync disabled.")
+	log.notify("Background sync disabled.", "info")
 end, {})
+
+vim.api.nvim_create_user_command("RevmanAddPR", function(opts)
+	local pr_number = tonumber(opts.args)
+	if not pr_number then
+		log.error("Usage: :RevmanAddPR {pr_number}")
+		return
+	end
+	local repo_name = utils.get_current_repo()
+	if not repo_name then
+		log.error("Could not determine current repo.")
+		return
+	end
+	local pr_data = require("revman.github.data").get_pr(pr_number, repo_name)
+	if not pr_data then
+		log.error("Could not fetch PR #" .. pr_number .. " from GitHub.")
+		return
+	end
+	local repo_row = utils.ensure_repo(repo_name)
+	if not repo_row then
+		log.error("Could not ensure repo in DB.")
+		return
+	end
+	local pr_db_row = require("revman.github.prs").extract_pr_fields(pr_data)
+	pr_db_row.repo_id = repo_row.id
+	pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
+	db_prs.add(pr_db_row)
+	log.info("Added PR #" .. pr_number .. " to local database.")
+end, { nargs = 1 })
+
+vim.api.nvim_create_user_command("RevmanAddRepo", function(opts)
+	local repo_name, directory
+	local args = vim.split(opts.args or "", " ")
+	if #args == 0 or args[1] == "" then
+		repo_name = utils.get_current_repo()
+		directory = vim.fn.getcwd()
+	elseif #args == 1 then
+		repo_name = args[1]
+		directory = vim.fn.getcwd()
+	else
+		repo_name = args[1]
+		directory = args[2]
+	end
+
+	if not repo_name or repo_name == "" then
+		log.error("Usage: :RevmanAddRepo {repo_url} [directory]")
+		return
+	end
+	if not directory or directory == "" then
+		directory = vim.fn.getcwd()
+	end
+
+	local db_repos = require("revman.db.repos")
+	-- Check for existing repo with same name and directory
+	local existing = nil
+	for _, repo in ipairs(db_repos.list()) do
+		if repo.name == repo_name and repo.directory == directory then
+			existing = repo
+			break
+		end
+	end
+	if existing then
+		log.info("Repo already exists: " .. repo_name .. " (" .. directory .. ")")
+		return
+	end
+
+	db_repos.add(repo_name, directory)
+	local repo_row = db_repos.get_by_name(repo_name)
+	if repo_row then
+		db_repos.update(repo_row.id, { directory = directory })
+		log.info("Added repo: " .. repo_name .. " (" .. directory .. ")")
+	else
+		log.error("Failed to add repo: " .. repo_name)
+	end
+end, { nargs = "*" })
 
 return M

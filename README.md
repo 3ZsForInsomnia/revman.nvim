@@ -31,23 +31,24 @@ revman.nvim is ideal for developers who want to streamline their PR review workf
 ## Installation
 
 ```lua
-use({
+{
   "yourusername/revman.nvim",
-  requires = {
+  dependencies = {
     "kkharji/sqlite.lua",
     "nvim-telescope/telescope.nvim",
     -- optional:
     "pwntester/octo.nvim",
-  }
-})
+  },
+  config = true,
+}
 ```
 
 ---
 
 ## Setup
 
-You must call `require("revman").setup()` in your Neovim config to initialize the plugin.  
-If you use a plugin manager like Lazy.nvim, this is handled automatically.  
+You must call `require("revman").setup()` in your Neovim config to initialize the plugin.
+If you use a plugin manager like Lazy.nvim, this is handled automatically using `config = true`
 If you use another manager or manual loading, ensure you call `setup()` yourself.
 
 > [!note]
@@ -69,6 +70,7 @@ require("revman").setup({
   keymaps = {
     save_notes = "<leader>zz", -- keybinding to save notes buffer
   },
+  log_level = "warn", -- "info", "warn", or "error"
 })
 ```
 

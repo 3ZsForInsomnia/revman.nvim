@@ -20,7 +20,7 @@ function M.get_pr(pr_number, repo)
 	end
 	return gh_json(
 		string.format(
-			"gh pr view %s --json number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup -R %s",
+			"gh pr view %s --json number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,body -R %s",
 			pr_number,
 			repo
 		)
@@ -72,6 +72,7 @@ function M.convert_pr_to_db(pr, repo_id)
 		repo_id = repo_id,
 		number = pr.number,
 		title = pr.title,
+		description = pr.body,
 		state = pr.state,
 		url = pr.url,
 		author = pr.author and pr.author.login or nil,

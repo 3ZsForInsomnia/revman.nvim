@@ -6,19 +6,18 @@ M.defaults = {
 	},
 
 	retention = {
-		-- Set to 0 to keep forever
-		days = 30,
+		days = 30, -- Set to 0 to keep forever
 	},
 
 	background = {
-		-- Set to 0 to disable background checks
-		frequency = 15,
+		frequency = 15, -- Set to 0 to disable background checks
 	},
 
 	keymaps = {
-		-- Set to nil or empty string to disable
-		save_notes = "<leader>zz",
+		save_notes = "<leader>zz", -- Set to nil or empty string to disable
 	},
+
+	log_level = "info", -- "info", "warn", or "error"
 }
 
 M.options = {}

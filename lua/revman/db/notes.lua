@@ -16,7 +16,7 @@ end
 
 function M.update_by_pr_id(pr_id, updates)
 	local db = get_db()
-	db:update("notes", updates, { pr_id = pr_id })
+	db:update("notes", { set = updates, where = { pr_id = pr_id } })
 	db:close()
 end
 

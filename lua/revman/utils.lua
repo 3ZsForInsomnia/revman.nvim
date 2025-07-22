@@ -2,6 +2,8 @@ local M = {}
 
 local github_data = require("revman.github.data")
 local db_repos = require("revman.db.repos")
+local db_prs = require("revman.db.prs")
+local config = require("revman.config")
 
 M.format_relative_time = function(timestamp)
 	local now = os.time()
@@ -66,6 +68,13 @@ M.ensure_repo = function(repo_name)
 	end
 	db_repos.add(repo_info.name)
 	return db_repos.get_by_name(repo_info.name)
+end
+
+M.db_file_exists = function()
+	local db_path = config.get().database.path
+	local stat = vim.loop.fs_stat(db_path)
+
+	return stat and stat.type == "file"
 end
 
 return M
