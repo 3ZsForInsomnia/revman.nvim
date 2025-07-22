@@ -1,57 +1,56 @@
 local M = {}
 
-local get_db = require("revman.db.create").get_db
+local with_db = require("revman.db.create").with_db
 
 function M.add(name, directory)
-	local db = get_db()
-	db:insert("repositories", { name = name, directory = directory })
-	db:close()
+	with_db(function(db)
+		db:insert("repositories", { name = name, directory = directory })
+	end)
 end
 
 function M.get_by_name(name)
-	local db = get_db()
-	local rows = db:select("repositories", { where = { name = name } })
-	db:close()
-	return rows[1]
+	return with_db(function(db)
+		local rows = db:select("repositories", { where = { name = name } })
+		return rows[1]
+	end)
 end
 
 function M.get_by_id(id)
-	local db = get_db()
-	local rows = db:select("repositories", { where = { id = id } })
-	db:close()
-	return rows[1]
+	return with_db(function(db)
+		local rows = db:select("repositories", { where = { id = id } })
+		return rows[1]
+	end)
 end
 
 function M.delete(id)
-	local db = get_db()
-	db:delete("repositories", { id = id })
-	db:close()
+	with_db(function(db)
+		db:delete("repositories", { id = id })
+	end)
 end
 
 function M.set_reminder_days(id, days)
-	local db = get_db()
-	db:update("repositories", { set = { reminder_days = days }, where = { id = id } })
-	db:close()
+	with_db(function(db)
+		db:update("repositories", { set = { reminder_days = days }, where = { id = id } })
+	end)
 end
 
 function M.get_reminder_days(id)
-	local db = get_db()
-	local rows = db:select("repositories", { where = { id = id } })
-	db:close()
-	return rows[1] and rows[1].reminder_days or 3
+	return with_db(function(db)
+		local rows = db:select("repositories", { where = { id = id } })
+		return rows[1] and rows[1].reminder_days or 3
+	end)
 end
 
 function M.list()
-	local db = get_db()
-	local rows = db:select("repositories")
-	db:close()
-	return rows
+	return with_db(function(db)
+		return db:select("repositories")
+	end)
 end
 
 function M.update(id, updates)
-	local db = get_db()
-	db:update("repositories", { set = updates, where = { id = id } })
-	db:close()
+	with_db(function(db)
+		db:update("repositories", { set = updates, where = { id = id } })
+	end)
 end
 
 return M

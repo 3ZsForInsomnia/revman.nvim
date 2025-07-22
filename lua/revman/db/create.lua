@@ -16,6 +16,21 @@ M.get_db = function()
 	return sqlite:open(db_path)
 end
 
+M.with_db = function(fn)
+	local db = M.get_db()
+	local ok, result_or_err = pcall(fn, db)
+	local close_ok, close_err = pcall(function()
+		db:close()
+	end)
+	if not ok then
+		error(result_or_err)
+	end
+	if not close_ok then
+		error("DB close failed: " .. tostring(close_err))
+	end
+	return result_or_err
+end
+
 M.ensure_schema = function()
 	local db_path = config.get().database.path
 	log.info("Using database file: " .. db_path)

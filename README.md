@@ -144,5 +144,4 @@ Run `:checkhealth revman` to verify all requirements and configuration.
 ## TODO
 
 Add error handling and logging everywhere
-Update usage of telescope to make it easier to abstract
-- E.g. if someone wants to use a different picker, they can just use the API that populates telescope currently
+Fix preview issues in Telescope

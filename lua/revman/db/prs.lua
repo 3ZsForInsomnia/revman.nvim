@@ -1,25 +1,25 @@
 local M = {}
-local get_db = require("revman.db.create").get_db
+local with_db = require("revman.db.create").with_db
 local status = require("revman.db.status")
 
 function M.add(pr)
-	local db = get_db()
-	db:insert("pull_requests", pr)
-	db:close()
+	with_db(function(db)
+		db:insert("pull_requests", pr)
+	end)
 end
 
 function M.get_by_id(id)
-	local db = get_db()
-	local rows = db:select("pull_requests", { where = { id = id } })
-	db:close()
-	return rows[1]
+	return with_db(function(db)
+		local rows = db:select("pull_requests", { where = { id = id } })
+		return rows[1]
+	end)
 end
 
 function M.get_by_repo_and_number(repo_id, number)
-	local db = get_db()
-	local rows = db:select("pull_requests", { where = { repo_id = repo_id, number = number } })
-	db:close()
-	return rows[1]
+	return with_db(function(db)
+		local rows = db:select("pull_requests", { where = { repo_id = repo_id, number = number } })
+		return rows[1]
+	end)
 end
 
 function M.set_review_status(pr_id, status_name)
@@ -27,10 +27,11 @@ function M.set_review_status(pr_id, status_name)
 	if not status_id then
 		return false, "Unknown status: " .. status_name
 	end
-	local db = get_db()
-	db:update("pull_requests", { set = { review_status_id = status_id }, where = { id = pr_id } })
-	db:close()
-	return true
+
+	return with_db(function(db)
+		db:update("pull_requests", { set = { review_status_id = status_id }, where = { id = pr_id } })
+		return true
+	end)
 end
 
 function M.update(id, updates)
@@ -40,9 +41,10 @@ function M.update(id, updates)
 	if not updates or vim.tbl_isempty(updates) then
 		error("db_prs.update: updates table is empty")
 	end
-	local db = get_db()
-	db:update("pull_requests", { set = updates, where = { id = id } })
-	db:close()
+
+	with_db(function(db)
+		db:update("pull_requests", { set = updates, where = { id = id } })
+	end)
 end
 
 function M.get_review_status(pr_id)
@@ -54,29 +56,24 @@ function M.get_review_status(pr_id)
 end
 
 function M.list(opts)
-	local db = get_db()
-	local rows
-	if opts and opts.where then
-		rows = db:select("pull_requests", { where = opts.where })
-	else
-		rows = db:select("pull_requests")
-	end
-	db:close()
-	return rows
+	return with_db(function(db)
+		local rows = db:select("pull_requests", { where = opts and opts.where or nil })
+		return rows
+	end)
 end
 
 function M.list_open()
-	local db = get_db()
-	local rows = db:select("pull_requests", { where = { state = "OPEN" } })
-	db:close()
-	return rows
+	return with_db(function(db)
+		local rows = db:select("pull_requests", { where = { state = "OPEN" } })
+		return rows
+	end)
 end
 
 function M.list_merged()
-	local db = get_db()
-	local rows = db:select("pull_requests", { where = { state = "MERGED" } })
-	db:close()
-	return rows
+	return with_db(function(db)
+		local rows = db:select("pull_requests", { where = { state = "MERGED" } })
+		return rows
+	end)
 end
 
 M.maybe_transition_status = function(pr_id, old_status, new_status)
