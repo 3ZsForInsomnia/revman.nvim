@@ -16,10 +16,6 @@ local function pr_previewer(self, entry, status)
 	local pr = entry.value
 	local ci_status = pr.ci_status or "unknown"
 	local ci_icon = ci.get_status_icon({ status = ci_status })
-	local description = pr.description or "(No description available)"
-	if #description > 500 then
-		description = description:sub(1, 500) .. "…"
-	end
 
 	local lines = {
 		string.format("PR #%s", pr.number),
@@ -37,8 +33,6 @@ local function pr_previewer(self, entry, status)
 		string.format("CI Status: %s %s", ci_icon, ci_status),
 		string.format("URL: %s", pr.url),
 		"",
-		"Description:",
-		description,
 	}
 	vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
 end

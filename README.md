@@ -1,6 +1,8 @@
 # revman.nvim
 
-An easier way to track multiple PRs that you are reviewing
+An easier way to track multiple PRs that you are reviewing.
+
+NOTE: This plugin is in early development and may change significantly. It is still a bit buggy, so feel free to report issues or contribute!
 
 revman.nvim is a Neovim plugin designed to make tracking, reviewing, and managing multiple GitHub pull requests (PRs) easier for busy developers and code reviewers. If you regularly review PRs across several repositories, keeping track of their status, your review notes, and which ones need your attention can quickly become overwhelming. revman.nvim centralizes this workflow inside Neovim, providing local analytics, note-taking, and seamless integration with GitHub and popular Neovim plugins like Telescope and Octo.nvim.
 

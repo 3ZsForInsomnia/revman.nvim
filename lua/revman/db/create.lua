@@ -54,7 +54,6 @@ M.ensure_schema = function()
 			repo_id INTEGER NOT NULL,
 			number INTEGER NOT NULL,
 			title TEXT NOT NULL,
-      description TEXT,
 			state TEXT NOT NULL,
 			url TEXT NOT NULL,
 			author TEXT NOT NULL,

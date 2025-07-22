@@ -72,7 +72,6 @@ function M.convert_pr_to_db(pr, repo_id)
 		repo_id = repo_id,
 		number = pr.number,
 		title = pr.title,
-		description = pr.body,
 		state = pr.state,
 		url = pr.url,
 		author = pr.author and pr.author.login or nil,

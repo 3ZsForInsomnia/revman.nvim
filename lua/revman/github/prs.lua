@@ -9,7 +9,6 @@ function M.extract_pr_fields(pr)
 	return {
 		number = pr.number,
 		title = pr.title,
-		description = pr.body,
 		state = pr.state,
 		url = pr.url,
 		author = pr.author and pr.author.login or nil,
