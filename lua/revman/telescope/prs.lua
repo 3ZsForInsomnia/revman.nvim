@@ -17,6 +17,17 @@ local function pr_previewer(self, entry, status)
 	local ci_status = pr.ci_status or "unknown"
 	local ci_icon = ci.get_status_icon({ status = ci_status })
 
+	local REVIEW_STATUS_LABELS = {
+		waiting_for_review = "Waiting for Review",
+		waiting_for_changes = "Waiting for Changes",
+		ready_for_re_review = "Ready for Re-Review",
+		approved = "Approved",
+		merged = "Merged",
+		closed = "Closed",
+		needs_nudge = "Needs Nudge",
+	}
+	local review_status = pr.review_status and REVIEW_STATUS_LABELS[pr.review_status] or "N/A"
+
 	local lines = {
 		string.format("PR #%s", pr.number),
 		string.format("Title: %s", pr.title),
@@ -29,7 +40,7 @@ local function pr_previewer(self, entry, status)
 		string.format("Last Synced: %s", pr.last_synced or "Never"),
 		string.format("Last Activity: %s", pr.last_activity or "Unknown"),
 		string.format("Comment Count: %s", pr.comment_count or "0"),
-		string.format("Review Status: %s", pr.review_status or "N/A"),
+		string.format("Review Status: %s", review_status),
 		string.format("CI Status: %s %s", ci_icon, ci_status),
 		string.format("URL: %s", pr.url),
 		"",
@@ -64,24 +75,24 @@ local function make_picker(prs, opts, title)
 			}),
 			attach_mappings = function(prompt_bufnr, map)
 				local update_last_viewed = function(entry)
-					print("Updating last viewed for PR #" .. vim.inspect(entry.value))
 					if entry and entry.value then
 						local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
-						print("db_prs.update args:", entry.value.id, vim.inspect({ last_viewed = now }))
+						actions.close(prompt_bufnr)
 						db_prs.update(entry.value.id, { last_viewed = now })
 						vim.cmd(string.format("Octo pr edit %d", entry.value.number))
 					end
 				end
+
 				map("i", "<CR>", function()
 					local entry = action_state.get_selected_entry()
 					update_last_viewed(entry)
-					actions.close(prompt_bufnr)
 				end)
+
 				map("n", "<CR>", function()
 					local entry = action_state.get_selected_entry()
 					update_last_viewed(entry)
-					actions.close(prompt_bufnr)
 				end)
+
 				return true
 			end,
 		})
@@ -89,15 +100,23 @@ local function make_picker(prs, opts, title)
 end
 
 function M.pick_all_prs(opts)
-	make_picker(db_prs.list(), opts, "All PRs")
+	make_picker(db_prs.list_with_status(), opts, "All PRs")
 end
 
 function M.pick_open_prs(opts)
-	make_picker(db_prs.list_open(), opts, "Open PRs")
+	make_picker(db_prs.list_with_status({ where = { state = "OPEN" } }), opts, "Open PRs")
+end
+
+function M.pick_prs_needing_review(opts)
+	make_picker(
+		db_prs.list_with_status({ where = { review_status = "waiting_for_review" } }),
+		opts,
+		"PRs Needing Review"
+	)
 end
 
 function M.pick_merged_prs(opts)
-	make_picker(db_prs.list_merged(), opts, "Merged PRs")
+	make_picker(db_prs.list_with_status({ where = { state = "MERGED" } }), opts, "Merged PRs")
 end
 
 return M

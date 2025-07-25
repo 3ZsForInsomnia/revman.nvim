@@ -1,5 +1,13 @@
 local M = {}
 
+local get_current_repo = function()
+	local lines = vim.fn.systemlist("gh repo view --json nameWithOwner -q .nameWithOwner")
+	if vim.v.shell_error ~= 0 or #lines == 0 or (lines[1] == "" and #lines == 1) then
+		return nil
+	end
+	return lines[1]:gsub("\n", "")
+end
+
 local function gh_json(cmd)
 	local lines = vim.fn.systemlist(cmd)
 	if vim.v.shell_error ~= 0 or #lines == 0 or (lines[1] == "" and #lines == 1) then
@@ -14,7 +22,7 @@ local function gh_json(cmd)
 end
 
 function M.get_pr(pr_number, repo)
-	repo = repo or require("revman.github").get_current_repo()
+	repo = repo or get_current_repo()
 	if not repo then
 		return nil, "Not in a GitHub repository"
 	end
@@ -28,17 +36,18 @@ function M.get_pr(pr_number, repo)
 end
 
 function M.list_prs(repo)
-	repo = repo or require("revman.github").get_current_repo()
+	repo = repo or get_current_repo()
 	if not repo then
 		return nil, "Not in a GitHub repository"
 	end
+
 	return gh_json(
 		string.format("gh pr list --json number,title,state,url,author,createdAt,isDraft,reviewDecision -R %s", repo)
 	)
 end
 
 function M.get_status_check_rollup(pr_number, repo)
-	repo = repo or require("revman.github").get_current_repo()
+	repo = repo or get_current_repo()
 	if not repo then
 		return nil, "Not in a GitHub repository"
 	end
@@ -50,7 +59,7 @@ function M.get_current_user()
 end
 
 function M.get_repo_info(repo)
-	repo = repo or require("revman.github").get_current_repo()
+	repo = repo or get_current_repo()
 	if not repo then
 		return nil, "Not in a GitHub repository"
 	end

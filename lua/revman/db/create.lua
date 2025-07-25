@@ -144,6 +144,10 @@ M.ensure_schema = function()
 end
 
 M.get_review_status_id = function(name)
+	if not name then
+		return nil
+	end
+
 	local db = M.get_db()
 	local rows = db:select("review_status", { where = { name = name } })
 	db:close()
@@ -151,6 +155,10 @@ M.get_review_status_id = function(name)
 end
 
 M.get_review_status_name = function(id)
+	if not id then
+		return nil
+	end
+
 	local db = M.get_db()
 	local rows = db:select("review_status", { where = { id = id } })
 	db:close()

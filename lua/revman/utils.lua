@@ -2,7 +2,6 @@ local M = {}
 
 local github_data = require("revman.github.data")
 local db_repos = require("revman.db.repos")
-local db_prs = require("revman.db.prs")
 local config = require("revman.config")
 
 M.format_relative_time = function(timestamp)
@@ -66,7 +65,8 @@ M.ensure_repo = function(repo_name)
 	if not repo_info then
 		return nil, "Could not fetch repo info"
 	end
-	db_repos.add(repo_info.name)
+	local directory = vim.fn.getcwd()
+	db_repos.add(repo_info.name, directory)
 	return db_repos.get_by_name(repo_info.name)
 end
 

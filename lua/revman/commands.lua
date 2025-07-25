@@ -1,9 +1,13 @@
 local workflows = require("revman.workflows")
+local github_data = require("revman.github.data")
+local logic_prs = require("revman.logic.prs")
 local db_prs = require("revman.db.prs")
+local db_repos = require("revman.db.repos")
 local db_status = require("revman.db.status")
 local db_notes = require("revman.db.notes")
 local config = require("revman.config")
 local utils = require("revman.utils")
+local github_prs = require("revman.github.prs")
 local telescope_prs = require("revman.telescope.prs")
 local telescope_authors = require("revman.telescope.users")
 local telescope_repos = require("revman.telescope.repos")
@@ -48,7 +52,7 @@ end
 
 -- 1. Sync all PRs
 vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()
-	local res, err = workflows.sync_all_prs()
+	local res, err = workflows.sync_all_tracked_prs_async()
 	if res then
 		log.info("Synced PRs: " .. vim.inspect(res))
 	else
@@ -60,7 +64,7 @@ end, {})
 vim.api.nvim_create_user_command("RevmanSyncPR", function(opts)
 	local pr_number = tonumber(opts.args)
 	if not pr_number then
-		print("Usage: :RevmanSyncPR {pr_number}")
+		-- print("Usage: :RevmanSyncPR {pr_number}")
 		-- TODO: this should allow no args for normal prompting of rfp id or number
 		return
 	end
@@ -80,6 +84,10 @@ end, {})
 -- 4. List open PRs (Telescope)
 vim.api.nvim_create_user_command("RevmanListOpenPRs", function()
 	telescope_prs.pick_open_prs()
+end, {})
+
+vim.api.nvim_create_user_command("RevmanListPRsNeedingReview", function()
+	telescope_prs.pick_prs_needing_review()
 end, {})
 
 -- 5. List merged PRs (Telescope)
@@ -104,10 +112,10 @@ vim.api.nvim_create_user_command("RevmanReviewPR", function(opts)
 			local pr_number = tonumber(opts.args)
 			if pr_number then
 				local repo_name = utils.get_current_repo()
-				local pr_data = require("revman.github.data").get_pr(pr_number, repo_name)
+				local pr_data = github_data.get_pr(pr_number, repo_name)
 				if pr_data then
 					local repo_row = utils.ensure_repo(repo_name)
-					local pr_db_row = require("revman.github.prs").extract_pr_fields(pr_data)
+					local pr_db_row = github_prs.extract_pr_fields(pr_data)
 					pr_db_row.repo_id = repo_row.id
 					pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
 					db_prs.add(pr_db_row)
@@ -194,7 +202,7 @@ end, { nargs = "?" })
 
 -- 12. List PRs needing a nudge
 vim.api.nvim_create_user_command("RevmanNudgePRs", function()
-	local prs = require("revman.logic.prs").list_prs_needing_nudge(db_prs, db_repos, utils)
+	local prs = logic_prs.list_prs_needing_nudge(db_prs, db_repos, utils)
 	if #prs == 0 then
 		log.notify("No PRs need a nudge!", "info")
 		log.info("No PRs need a nudge!")
@@ -229,7 +237,7 @@ vim.api.nvim_create_user_command("RevmanAddPR", function(opts)
 		log.error("Could not determine current repo.")
 		return
 	end
-	local pr_data = require("revman.github.data").get_pr(pr_number, repo_name)
+	local pr_data = github_data.get_pr(pr_number, repo_name)
 	if not pr_data then
 		log.error("Could not fetch PR #" .. pr_number .. " from GitHub.")
 		return
@@ -239,7 +247,7 @@ vim.api.nvim_create_user_command("RevmanAddPR", function(opts)
 		log.error("Could not ensure repo in DB.")
 		return
 	end
-	local pr_db_row = require("revman.github.prs").extract_pr_fields(pr_data)
+	local pr_db_row = github_prs.extract_pr_fields(pr_data)
 	pr_db_row.repo_id = repo_row.id
 	pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
 	db_prs.add(pr_db_row)
@@ -268,7 +276,6 @@ vim.api.nvim_create_user_command("RevmanAddRepo", function(opts)
 		directory = vim.fn.getcwd()
 	end
 
-	local db_repos = require("revman.db.repos")
 	-- Check for existing repo with same name and directory
 	local existing = nil
 	for _, repo in ipairs(db_repos.list()) do

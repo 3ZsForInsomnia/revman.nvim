@@ -145,3 +145,5 @@ Run `:checkhealth revman` to verify all requirements and configuration.
 
 Add error handling and logging everywhere
 Fix preview issues in Telescope
+Fix analytics data retrieval
+- And previews, right now is pretty simple

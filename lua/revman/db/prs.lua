@@ -4,7 +4,24 @@ local status = require("revman.db.status")
 
 function M.add(pr)
 	with_db(function(db)
-		db:insert("pull_requests", pr)
+		if not pr.last_synced then
+			pr.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
+		end
+
+		if not pr.review_status_id then
+			pr.review_status_id = status.get_id("waiting_for_review")
+		end
+
+		local ok, err = pcall(function()
+			db:insert("pull_requests", pr)
+		end)
+		if not ok and tostring(err):match("UNIQUE constraint failed") then
+			vim.schedule(function()
+				vim.notify("PR already exists in the database.", vim.log.levels.INFO)
+			end)
+		elseif not ok then
+			error(err)
+		end
 	end)
 end
 
@@ -62,6 +79,16 @@ function M.list(opts)
 	end)
 end
 
+function M.list_with_status(opts)
+	return with_db(function(db)
+		local rows = db:select("pull_requests", { where = opts and opts.where or nil })
+		for _, pr in ipairs(rows) do
+			pr.review_status = status.get_name(pr.review_status_id)
+		end
+		return rows
+	end)
+end
+
 function M.list_open()
 	return with_db(function(db)
 		local rows = db:select("pull_requests", { where = { state = "OPEN" } })
@@ -83,8 +110,8 @@ M.maybe_transition_status = function(pr_id, old_status, new_status)
 
 	M.set_review_status(pr_id, new_status)
 
-	local from_id = M.get_id(old_status)
-	local to_id = M.get_id(new_status)
+	local from_id = status.get_id(old_status)
+	local to_id = status.get_id(new_status)
 
 	M.add_status_transition(pr_id, from_id, to_id)
 end

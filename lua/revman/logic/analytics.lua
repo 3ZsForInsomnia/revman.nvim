@@ -1,5 +1,6 @@
 local db_prs = require("revman.db.prs")
 local db_status = require("revman.db.status")
+local utils = require("revman.utils")
 
 local M = {}
 
@@ -19,8 +20,8 @@ function M.average_pr_age_at_merge()
 	local ages = {}
 	for _, pr in ipairs(prs) do
 		if pr.state == "MERGED" then
-			local created = pr.created_at and require("revman.utils").parse_iso8601(pr.created_at)
-			local merged = pr.last_activity and require("revman.utils").parse_iso8601(pr.last_activity)
+			local created = pr.created_at and utils.parse_iso8601(pr.created_at)
+			local merged = pr.last_activity and utils.parse_iso8601(pr.last_activity)
 			if created and merged then
 				local author = pr.author or "unknown"
 				ages[author] = ages[author] or { total = 0, count = 0 }
@@ -40,7 +41,7 @@ function M.prs_reviewed_over_time()
 	local history = db_status.get_all_status_history()
 	local counts = { day = {}, week = {}, month = {} }
 	for _, entry in ipairs(history) do
-		local ts = require("revman.utils").parse_iso8601(entry.timestamp)
+		local ts = utils.parse_iso8601(entry.timestamp)
 		if ts then
 			local day = os.date("%Y-%m-%d", ts)
 			local week = os.date("%Y-W%U", ts)
