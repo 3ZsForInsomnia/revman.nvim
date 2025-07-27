@@ -61,13 +61,14 @@ M.ensure_repo = function(repo_name)
 	if repo_row then
 		return repo_row
 	end
-	local repo_info = github_data.get_repo_info(repo_name)
-	if not repo_info then
-		return nil, "Could not fetch repo info"
-	end
-	local directory = vim.fn.getcwd()
-	db_repos.add(repo_info.name, directory)
-	return db_repos.get_by_name(repo_info.name)
+	return nil, "Repository not yet added to the database"
+	-- local repo_info = github_data.get_repo_info(repo_name)
+	-- if not repo_info then
+	-- 	return nil, "Could not fetch repo info"
+	-- end
+	-- local directory = vim.fn.getcwd()
+	-- db_repos.add(repo_info.name, directory)
+	-- return db_repos.get_by_name(repo_info.name)
 end
 
 M.db_file_exists = function()

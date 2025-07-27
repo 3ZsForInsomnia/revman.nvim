@@ -10,57 +10,10 @@ local log = require("revman.log")
 local M = {}
 
 local function async_get_pr(pr_number, repo, callback)
-	local cmd = {
-		"gh",
-		"pr",
-		"view",
-		tostring(pr_number),
-		"--json",
-		"number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,body",
-		"-R",
-		repo,
-	}
-	local stdout = vim.loop.new_pipe(false)
-	local stderr = vim.loop.new_pipe(false)
-	local output = {}
-
-	local handle
-	handle = vim.loop.spawn(cmd[1], {
-		args = { unpack(cmd, 2) },
-		stdio = { nil, stdout, stderr },
-	}, function(code, signal)
-		stdout:close()
-		stderr:close()
-		handle:close()
-		if code == 0 then
-			local json = table.concat(output)
-			local ok, pr_data = pcall(vim.json.decode, json)
-			if ok then
-				vim.schedule(function()
-					callback(pr_data)
-				end)
-			else
-				vim.schedule(function()
-					callback(nil, "Failed to decode JSON")
-				end)
-			end
-		else
-			vim.schedule(function()
-				callback(nil, "gh exited with code " .. code)
-			end)
-		end
-	end)
-
-	stdout:read_start(function(err, data)
-		assert(not err, err)
-		if data then
-			table.insert(output, data)
-		end
-	end)
-	stderr:read_start(function(err, data) end)
+	github_data.get_pr_async(pr_number, repo, callback)
 end
 
-function M.sync_all_tracked_prs_async(repo_name)
+function M.sync_all_tracked_prs_async(repo_name, sync_all)
 	repo_name = repo_name or utils.get_current_repo()
 	if not repo_name then
 		log.error("No repo specified for sync")
@@ -73,7 +26,12 @@ function M.sync_all_tracked_prs_async(repo_name)
 		return
 	end
 
-	local tracked_prs = db_prs.list({ where = { repo_id = repo_row.id } })
+	local query = { where = { repo_id = repo_row.id } }
+	if not sync_all then
+		query.where.state = "OPEN"
+	end
+
+	local tracked_prs = db_prs.list(query)
 	if #tracked_prs == 0 then
 		log.info("No tracked PRs to sync for this repo.")
 		return
@@ -97,8 +55,7 @@ function M.sync_all_tracked_prs_async(repo_name)
 
 				-- Extract CI status
 				if pr_data.statusCheckRollup and type(pr_data.statusCheckRollup) == "table" then
-					local ci_summary = ci.extract_ci_status(pr_data)
-					pr_db_row.ci_status = ci_summary and ci_summary.status or nil
+					pr_db_row.ci_status = ci.extract_ci_status(pr_data)
 				end
 
 				local pr_id = logic_prs.upsert_pr(db_prs, db_repos, pr_db_row)
@@ -131,8 +88,9 @@ function M.sync_pr(pr_number, repo_name)
 	end
 
 	local pr_db_row = github_prs.extract_pr_fields(pr_data)
-	local repo_row = utils.ensure_repo(repo_name)
+	local repo_row, err = utils.ensure_repo(repo_name)
 	if not repo_row then
+		log.error(err or "Could not ensure repo in DB for sync")
 		return nil, "Repo not found or could not be created"
 	end
 	pr_db_row.repo_id = repo_row.id
@@ -178,8 +136,7 @@ function M.sync_pr(pr_number, repo_name)
 	db_prs.maybe_transition_status(pr_id, old_status, new_status)
 
 	if pr_data.statusCheckRollup and type(pr_data.statusCheckRollup) == "table" then
-		local ci_summary = ci.extract_ci_status(pr_data)
-		pr_db_row.ci_status = ci_summary and ci_summary.status or nil
+		pr_db_row.ci_status = ci.extract_ci_status(pr_data)
 	end
 
 	return pr_id
@@ -198,7 +155,7 @@ function M.sync_all_prs(repo_name)
 	end
 
 	-- Get all tracked PRs for this repo
-	local tracked_prs = db_prs.list({ where = { repo_id = repo_row.id } })
+	local tracked_prs = db_prs.list({ where = { repo_id = repo_row.id, state = "OPEN" } })
 	local results = {}
 
 	for _, pr in ipairs(tracked_prs) do

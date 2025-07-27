@@ -17,7 +17,7 @@ M.defaults = {
 		save_notes = "<leader>zz", -- Set to nil or empty string to disable
 	},
 
-	log_level = "info", -- "info", "warn", or "error"
+	log_level = "error", -- "info", "warn", or "error"
 }
 
 M.options = {}

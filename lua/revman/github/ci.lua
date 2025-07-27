@@ -5,30 +5,32 @@ function M.extract_ci_status(status_data)
 		return nil
 	end
 	local checks = status_data.statusCheckRollup
-	local total, passing, failing, pending = #checks, 0, 0, 0
+	local total = #checks
+	local passing, failing, pending, skipped = 0, 0, 0, 0
+
 	for _, check in ipairs(checks) do
-		if check.state == "SUCCESS" then
+		if check.conclusion == "SUCCESS" then
 			passing = passing + 1
-		elseif check.state == "FAILURE" or check.state == "ERROR" then
+		elseif check.conclusion == "FAILURE" or check.conclusion == "ERROR" then
 			failing = failing + 1
-		else
+		elseif check.conclusion == "SKIPPED" then
+			skipped = skipped + 1
+		elseif not check.conclusion or check.conclusion == "PENDING" then
 			pending = pending + 1
 		end
 	end
-	local status = "PENDING"
+
 	if failing > 0 then
-		status = "FAILING"
-	elseif pending == 0 and passing == total then
-		status = "PASSING"
+		return "FAILING"
+	elseif pending > 0 then
+		return "PENDING"
+	elseif passing + skipped == total and passing > 0 then
+		return "PASSING"
+	elseif skipped == total then
+		return "SKIPPED"
+	else
+		return "PENDING"
 	end
-	return {
-		status = status,
-		total = total,
-		passing = passing,
-		failing = failing,
-		pending = pending,
-		checks = checks,
-	}
 end
 
 function M.get_status_icon(ci_status)

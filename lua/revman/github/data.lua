@@ -21,18 +21,114 @@ local function gh_json(cmd)
 	return json
 end
 
+local function get_gh_pr_view_cmd(pr_number, repo)
+	return {
+		"gh",
+		"pr",
+		"view",
+		tostring(pr_number),
+		"--json",
+		"number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,body,commits,reviews",
+		"-R",
+		repo,
+	}
+end
+
+-- Helper to build gh api comments command
+local function get_gh_comments_cmd(pr_number, repo)
+	return {
+		"gh",
+		"api",
+		"-H",
+		"Accept: application/vnd.github+json",
+		string.format("/repos/%s/pulls/%s/comments", repo, pr_number),
+	}
+end
+
+-- Synchronous runner
+local function run_gh_cmd_sync(cmd)
+	local lines = vim.fn.systemlist(table.concat(cmd, " "))
+	if vim.v.shell_error ~= 0 or #lines == 0 then
+		return nil
+	end
+	local output = table.concat(lines, "\n")
+	local ok, json = pcall(vim.json.decode, output)
+	if not ok or not json then
+		return nil
+	end
+	return json
+end
+
+-- Asynchronous runner
+local function run_gh_cmd_async(cmd, callback)
+	local stdout = vim.loop.new_pipe(false)
+	local output = {}
+	local handle
+	handle = vim.loop.spawn(cmd[1], {
+		args = { unpack(cmd, 2) },
+		stdio = { nil, stdout, nil },
+	}, function(code)
+		stdout:close()
+		handle:close()
+		if code == 0 then
+			local json_str = table.concat(output)
+			local ok, json = pcall(vim.json.decode, json_str)
+			vim.schedule(function()
+				callback(ok and json or nil)
+			end)
+		else
+			vim.schedule(function()
+				callback(nil)
+			end)
+		end
+	end)
+	stdout:read_start(function(err, data)
+		assert(not err, err)
+		if data then
+			table.insert(output, data)
+		end
+	end)
+end
+
+-- Synchronous get_pr
 function M.get_pr(pr_number, repo)
 	repo = repo or get_current_repo()
 	if not repo then
 		return nil, "Not in a GitHub repository"
 	end
-	return gh_json(
-		string.format(
-			"gh pr view %s --json number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,body -R %s",
-			pr_number,
-			repo
-		)
-	)
+	local pr = run_gh_cmd_sync(get_gh_pr_view_cmd(pr_number, repo))
+	if not pr then
+		return nil, "Failed to fetch PR metadata"
+	end
+	local comments = run_gh_cmd_sync(get_gh_comments_cmd(pr_number, repo))
+	pr.comment_count = comments and #comments or 0
+	return pr
+end
+
+-- Synchronous get_all_review_comments
+function M.get_all_review_comments(repo, pr_number)
+	return run_gh_cmd_sync(get_gh_comments_cmd(pr_number, repo)) or {}
+end
+
+-- Asynchronous get_pr
+function M.get_pr_async(pr_number, repo, callback)
+	repo = repo or get_current_repo()
+	if not repo then
+		vim.schedule(function()
+			callback(nil, "Not in a GitHub repository")
+		end)
+		return
+	end
+	run_gh_cmd_async(get_gh_pr_view_cmd(pr_number, repo), function(pr)
+		if not pr then
+			callback(nil, "Failed to fetch PR metadata")
+			return
+		end
+		run_gh_cmd_async(get_gh_comments_cmd(pr_number, repo), function(comments)
+			pr.comment_count = comments and #comments or 0
+			callback(pr)
+		end)
+	end)
 end
 
 function M.list_prs(repo)

@@ -1,6 +1,5 @@
 local workflows = require("revman.workflows")
 local github_data = require("revman.github.data")
-local logic_prs = require("revman.logic.prs")
 local db_prs = require("revman.db.prs")
 local db_repos = require("revman.db.repos")
 local db_status = require("revman.db.status")
@@ -13,86 +12,72 @@ local telescope_authors = require("revman.telescope.users")
 local telescope_repos = require("revman.telescope.repos")
 local sync = require("revman.sync")
 local log = require("revman.log")
+local cmd_utils = require("revman.command-utils")
 
 local M = {}
 
--- Helper: prompt user to select a PR (by number or db id)
-local function prompt_select_pr(callback)
-	local prs = db_prs.list_open()
-	local entries = {}
-	for _, pr in ipairs(prs) do
-		table.insert(entries, {
-			pr = pr,
-			display = string.format("#%s [%s] %s (%s)", pr.number, pr.state, pr.title, pr.author or "unknown"),
-		})
-	end
-	vim.ui.select(entries, {
-		prompt = "Select PR",
-		format_item = function(item)
-			return item.display
-		end,
-	}, function(choice)
-		if choice then
-			callback(choice.pr)
-		end
-	end)
-end
-
--- Helper: resolve PR from user input (db id or PR number)
-local function resolve_pr(pr_arg, callback)
-	if pr_arg and pr_arg ~= "" then
-		local pr = db_prs.get_by_id(tonumber(pr_arg)) or db_prs.get_by_repo_and_number(nil, tonumber(pr_arg))
-		if pr then
-			callback(pr)
-			return
-		end
-	end
-	prompt_select_pr(callback)
-end
-
 -- 1. Sync all PRs
 vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()
-	local res, err = workflows.sync_all_tracked_prs_async()
-	if res then
-		log.info("Synced PRs: " .. vim.inspect(res))
-	else
-		log.error("Error syncing PRs: " .. (err or "unknown"))
-	end
+	workflows.sync_all_tracked_prs_async()
 end, {})
 
 -- 2. Sync a single PR
 vim.api.nvim_create_user_command("RevmanSyncPR", function(opts)
 	local pr_number = tonumber(opts.args)
 	if not pr_number then
-		-- print("Usage: :RevmanSyncPR {pr_number}")
-		-- TODO: this should allow no args for normal prompting of rfp id or number
+		cmd_utils.prompt_select_pr(function(selected_pr)
+			if selected_pr then
+				local pr_id, err = workflows.sync_pr(selected_pr.number)
+				if err then
+					return log.error(
+						"Error syncing PR #"
+							.. selected_pr.number
+							.. ": "
+							.. err
+							.. ". Make sure the current repo is added!"
+					)
+				end
+				if pr_id then
+					log.info("PR synced: " .. pr_id)
+				end
+			end
+		end)
 		return
 	end
+
 	local pr_id, err = workflows.sync_pr(pr_number)
+	if err then
+		return log.error("Error syncing PR #" .. pr_number .. ": " .. err .. ". Make sure the current repo is added!")
+	end
 	if pr_id then
 		log.info("PR synced: " .. pr_id)
-	else
-		log.error("Error syncing PR: " .. (err or "unknown"))
 	end
 end, { nargs = 1 })
 
 -- 3. List all PRs (Telescope)
 vim.api.nvim_create_user_command("RevmanListPRs", function()
-	telescope_prs.pick_all_prs()
+	local prs = db_prs.list_with_status()
+	telescope_prs.pick_prs(prs, nil, "All PRs", cmd_utils.default_pr_select_callback)
 end, {})
 
 -- 4. List open PRs (Telescope)
 vim.api.nvim_create_user_command("RevmanListOpenPRs", function()
-	telescope_prs.pick_open_prs()
+	local prs = db_prs.list_with_status({ where = { state = "OPEN" } })
+	telescope_prs.pick_prs(prs, nil, "Open PRs", cmd_utils.default_pr_select_callback)
 end, {})
 
 vim.api.nvim_create_user_command("RevmanListPRsNeedingReview", function()
-	telescope_prs.pick_prs_needing_review()
+	local prs = db_prs.list_with_status({ where = { review_status = "waiting_for_review" } })
+	telescope_prs.pick_prs(prs, nil, "PRs Needing Review", cmd_utils.default_pr_select_callback)
 end, {})
 
 -- 5. List merged PRs (Telescope)
 vim.api.nvim_create_user_command("RevmanListMergedPRs", function()
-	telescope_prs.pick_merged_prs()
+	local prs = db_prs.list_with_status({
+		where = { state = "MERGED" },
+		order_by = { desc = { "merged_at" } },
+	})
+	telescope_prs.pick_prs(prs, nil, "Merged PRs", cmd_utils.default_pr_select_callback)
 end, {})
 
 -- 6. List repos (Telescope)
@@ -107,7 +92,7 @@ end, {})
 
 -- 8. Review PR (select for review, open in Octo)
 vim.api.nvim_create_user_command("RevmanReviewPR", function(opts)
-	resolve_pr(opts.args, function(pr)
+	cmd_utils.resolve_pr(opts.args, function(pr)
 		if not pr then
 			local pr_number = tonumber(opts.args)
 			if pr_number then
@@ -131,36 +116,83 @@ vim.api.nvim_create_user_command("RevmanReviewPR", function(opts)
 	end)
 end, { nargs = "?" })
 
--- 9. Set PR status (with vim.ui.select)
 vim.api.nvim_create_user_command("RevmanSetStatus", function(opts)
-	resolve_pr(opts.args, function(pr)
+	local status_arg = opts.fargs[2]
+	cmd_utils.resolve_pr(opts.fargs[1], function(pr)
 		if not pr then
 			log.error("No PR selected for status update.")
 			return
 		end
+		local function set_status(status)
+			if status then
+				workflows.set_status(pr.id, status)
+				log.info("PR #" .. pr.number .. " status updated to: " .. status)
+			end
+		end
+		if status_arg then
+			set_status(status_arg)
+		else
+			local statuses = {}
+			for _, s in ipairs(db_status.list()) do
+				table.insert(statuses, s.name)
+			end
+			vim.ui.select(statuses, { prompt = "Select status" }, set_status)
+		end
+	end)
+end, {
+	nargs = "*",
+	complete = function(arglead, cmdline, cursorpos)
+		local statuses = {}
+		for _, s in ipairs(db_status.list()) do
+			if s.name:match("^" .. arglead) then
+				table.insert(statuses, s.name)
+			end
+		end
+		return statuses
+	end,
+})
+
+-- RevmanSetStatusForCurrentPR: for automation/keybindings
+vim.api.nvim_create_user_command("RevmanSetStatusForCurrentPR", function(opts)
+	local bufname = vim.api.nvim_buf_get_name(0)
+	local pr_number = bufname:match("pr/(%d+)") -- adjust pattern for Octo buffer naming
+	if not pr_number then
+		log.error("Could not infer PR number from buffer name.")
+		return
+	end
+	local pr = db_prs.get_by_repo_and_number(nil, tonumber(pr_number))
+	if not pr then
+		log.error("No PR found for number: " .. pr_number)
+		return
+	end
+	local status_arg = opts.args
+	local function set_status(status)
+		if status then
+			workflows.set_status(pr.id, status)
+			log.info("PR #" .. pr.number .. " status updated to: " .. status)
+		end
+	end
+	if status_arg and status_arg ~= "" then
+		set_status(status_arg)
+	else
 		local statuses = {}
 		for _, s in ipairs(db_status.list()) do
 			table.insert(statuses, s.name)
 		end
-		vim.ui.select(statuses, { prompt = "Select status" }, function(choice)
-			if choice then
-				workflows.set_status(pr.id, choice)
-				log.info("PR #" .. pr.number .. " status updated to: " .. choice)
-			end
-		end)
-	end)
+		vim.ui.select(statuses, { prompt = "Select status" }, set_status)
+	end
 end, { nargs = "?" })
 
 -- 10. Add or update note (open buffer, save with keybinding)
 vim.api.nvim_create_user_command("RevmanAddNote", function(opts)
-	resolve_pr(opts.args, function(pr)
+	cmd_utils.resolve_pr(opts.args, function(pr)
 		if not pr then
 			log.error("No PR selected for note.")
 			return
 		end
 		local note = db_notes.get_by_pr_id(pr.id)
 		local buf = vim.api.nvim_create_buf(false, true)
-		vim.api.nvim_buf_set_option(buf, "buftype", "acwrite")
+		vim.bo[buf].buftype = "acwrite"
 		vim.api.nvim_buf_set_name(buf, "RevmanNote-" .. pr.id)
 		if note and note.content then
 			vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(note.content, "\n"))
@@ -184,7 +216,7 @@ end, { nargs = "?" })
 
 -- 11. Show notes for PR
 vim.api.nvim_create_user_command("RevmanShowNotes", function(opts)
-	resolve_pr(opts.args, function(pr)
+	cmd_utils.resolve_pr(opts.args, function(pr)
 		if not pr then
 			log.error("No PR selected for showing notes.")
 			return
@@ -200,17 +232,14 @@ vim.api.nvim_create_user_command("RevmanShowNotes", function(opts)
 	end)
 end, { nargs = "?" })
 
--- 12. List PRs needing a nudge
 vim.api.nvim_create_user_command("RevmanNudgePRs", function()
-	local prs = logic_prs.list_prs_needing_nudge(db_prs, db_repos, utils)
+	local prs = db_prs.list_with_status({ where = { review_status = "needs_nudge" } })
 	if #prs == 0 then
 		log.notify("No PRs need a nudge!", "info")
 		log.info("No PRs need a nudge!")
 		return
 	end
-	for _, pr in ipairs(prs) do
-		print(string.format("#%s %s (%s)", pr.number, pr.title, pr.author or "unknown"))
-	end
+	telescope_prs.pick_prs(prs, nil, "PRs Needing a Nudge", cmd_utils.default_pr_select_callback)
 end, {})
 
 -- 13. Toggle background sync

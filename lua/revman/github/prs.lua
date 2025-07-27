@@ -6,6 +6,9 @@ function M.extract_pr_fields(pr)
 	if not pr then
 		return nil
 	end
+
+	local latest_activity_time = M.extract_latest_activity(pr)
+
 	return {
 		number = pr.number,
 		title = pr.title,
@@ -15,6 +18,8 @@ function M.extract_pr_fields(pr)
 		created_at = pr.createdAt,
 		is_draft = pr.isDraft and 1 or 0,
 		review_decision = pr.reviewDecision,
+		comment_count = pr.comment_count,
+		last_activity = latest_activity_time.latest_activity_time,
 	}
 end
 
@@ -28,6 +33,20 @@ end
 
 function M.extract_comments(pr_data)
 	return pr_data and pr_data.comments or {}
+end
+
+function M.extract_comment_count(pr_data)
+	local count = 0
+
+	if pr_data and pr_data.comments then
+		count = count + #pr_data.comments
+	end
+
+	if pr_data and pr_data.reviews then
+		count = count + #pr_data.reviews
+	end
+
+	return count
 end
 
 function M.extract_commits(pr_data)
@@ -53,9 +72,15 @@ function M.extract_latest_activity(pr_data)
 		end
 	end
 
+	local latest_activity_time = latest_comment_time
+	if latest_commit_time and (not latest_activity_time or latest_commit_time > latest_activity_time) then
+		latest_activity_time = latest_commit_time
+	end
+
 	return {
 		latest_comment_time = latest_comment_time,
 		latest_commit_time = latest_commit_time,
+		latest_activity_time = latest_activity_time,
 	}
 end
 
