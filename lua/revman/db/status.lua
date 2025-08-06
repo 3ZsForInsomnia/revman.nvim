@@ -47,12 +47,17 @@ end
 
 function M.add_status_transition(pr_id, from_status_id, to_status_id)
 	with_db(function(db)
-		db:insert("review_status_history", {
-			pr_id = pr_id,
-			from_status_id = from_status_id,
-			to_status_id = to_status_id,
-			timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-		})
+		local ok, err = pcall(function()
+			db:insert("review_status_history", {
+				pr_id = pr_id,
+				from_status_id = from_status_id,
+				to_status_id = to_status_id,
+				timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+			})
+		end)
+		if not ok then
+			print("Error adding status transition:", err)
+		end
 	end)
 end
 

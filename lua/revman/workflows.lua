@@ -70,6 +70,7 @@ function M.sync_all_tracked_prs_async(repo_name, sync_all)
 					log.error("Some PRs failed to sync: " .. table.concat(errors, "; "))
 				else
 					log.info("All tracked PRs synced successfully: " .. vim.inspect(results))
+					log.notify("All tracked PRs synced successfully")
 				end
 			end
 		end)
@@ -101,36 +102,47 @@ function M.sync_pr(pr_number, repo_name)
 		pr_db_row.last_activity = activity.latest_comment_time or activity.latest_commit_time
 	end
 
-	-- Get current DB PR (if exists) to compare status/activity
 	local existing_pr = db_prs.get_by_repo_and_number(pr_db_row.repo_id, pr_db_row.number)
 	local old_status = existing_pr and db_prs.get_review_status(existing_pr.id) or nil
 	local new_status = old_status
 
-	-- Example status transition logic:
-	-- If new comments/commits since last_viewed, set to "waiting_for_review"
-	if existing_pr and existing_pr.last_viewed then
-		if
-			(activity.latest_comment_time and activity.latest_comment_time > existing_pr.last_viewed)
-			or (activity.latest_commit_time and activity.latest_commit_time > existing_pr.last_viewed)
-		then
-			new_status = "waiting_for_review"
-		end
-	end
-
-	-- If PR is merged, set status to "merged"
+	-- Status transition logic
 	if pr_db_row.state == "MERGED" then
 		new_status = "merged"
 	elseif pr_db_row.state == "CLOSED" then
 		new_status = "closed"
-	end
-
-	-- If PR is approved, set status to "approved"
-	if pr_db_row.review_decision == "APPROVED" then
+	elseif pr_db_row.review_decision == "APPROVED" then
 		new_status = "approved"
+	elseif existing_pr and old_status == "waiting_for_changes" then
+		-- Find the last time status was set to "waiting_for_changes"
+		local status = require("revman.db.status")
+		local parse = require("revman.utils").parse_iso8601
+		local status_history = status.get_status_history(existing_pr.id)
+		local waiting_for_changes_id = status.get_id("waiting_for_changes")
+		local last_waiting_for_changes_ts = nil
+		for _, entry in ipairs(status_history) do
+			if entry.to_status_id == waiting_for_changes_id then
+				last_waiting_for_changes_ts = entry.timestamp
+			end
+		end
+
+		if last_waiting_for_changes_ts then
+			local last_changes_ts = parse(last_waiting_for_changes_ts)
+			local comment_ts = activity.latest_comment_time and parse(activity.latest_comment_time) or nil
+			local commit_ts = activity.latest_commit_time and parse(activity.latest_commit_time) or nil
+
+			if (comment_ts and comment_ts > last_changes_ts) or (commit_ts and commit_ts > last_changes_ts) then
+				new_status = "waiting_for_review"
+			end
+		end
 	end
 
-	-- Upsert PR in DB
 	local pr_id = logic_prs.upsert_pr(db_prs, db_repos, pr_db_row)
+
+	local history = require("revman.db.status").get_status_history(pr_id)
+	if not history or #history == 0 then
+		require("revman.db.status").add_status_transition(pr_id, nil, pr_db_row.review_status_id)
+	end
 
 	-- Handle status transition and history
 	db_prs.maybe_transition_status(pr_id, old_status, new_status)

@@ -102,6 +102,8 @@ function M.authors_with_preview()
 			author = author,
 			pr_count = #prs,
 			avg_age_at_merge = avg_age[author] or 0,
+			-- comments = db_prs.count_comments_by(author),
+			-- comments_per_week = db_prs.comments_per_week(author),
 		})
 	end
 	return result

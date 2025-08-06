@@ -50,4 +50,13 @@ function M.resolve_pr(pr_arg, callback)
 	M.prompt_select_pr(callback)
 end
 
+function M.extract_pr_number_from_octobuffer(bufname)
+	-- Match "octo://org/repo/pull/1234"
+	local pr_number = bufname:match("octo://[^/]+/[^/]+/pull/(%d+)")
+	if pr_number then
+		return tonumber(pr_number)
+	end
+	return nil
+end
+
 return M

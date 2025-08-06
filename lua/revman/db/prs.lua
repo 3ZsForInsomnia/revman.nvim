@@ -2,6 +2,7 @@ local M = {}
 
 local with_db = require("revman.db.create").with_db
 local status = require("revman.db.status")
+local log = require("revman.log")
 
 local defaultSort = { desc = { "number" } }
 
@@ -20,10 +21,15 @@ function M.add(pr)
 		end)
 		if not ok and tostring(err):match("UNIQUE constraint failed") then
 			vim.schedule(function()
-				vim.notify("PR already exists in the database.", vim.log.levels.INFO)
+				log.notify("PR already exists in the database.")
 			end)
 		elseif not ok then
 			error(err)
+		else
+			local inserted_pr = db:select("pull_requests", { where = { repo_id = pr.repo_id, number = pr.number } })[1]
+			if inserted_pr and inserted_pr.id then
+				status.add_status_transition(inserted_pr.id, nil, inserted_pr.review_status_id)
+			end
 		end
 	end)
 end
@@ -45,11 +51,18 @@ end
 function M.set_review_status(pr_id, status_name)
 	local status_id = status.get_id(status_name)
 	if not status_id then
-		return false, "Unknown status: " .. status_name
+		log.error("db_prs.set_review_status: Unknown status: " .. status_name)
+		return false
 	end
 
 	return with_db(function(db)
+		-- Get old status before updating
+		local pr = db:select("pull_requests", { where = { id = pr_id } })[1]
+		local old_status = pr and status.get_name(pr.review_status_id) or nil
+
 		db:update("pull_requests", { set = { review_status_id = status_id }, where = { id = pr_id } })
+
+		M.maybe_transition_status(pr_id, old_status, status_name)
 		return true
 	end)
 end
@@ -146,7 +159,33 @@ M.maybe_transition_status = function(pr_id, old_status, new_status)
 	local from_id = status.get_id(old_status)
 	local to_id = status.get_id(new_status)
 
-	M.add_status_transition(pr_id, from_id, to_id)
+	status.add_status_transition(pr_id, from_id, to_id)
+end
+
+function M.count_comments_by(user)
+	local sql = [[SELECT COUNT(*) FROM comments WHERE author = ?]]
+	return db.scalar(sql, user)
+end
+
+function M.comments_per_week(user)
+	local sql = [[
+    SELECT strftime('%Y-%W', created_at) as week, COUNT(*) as count
+    FROM comments
+    WHERE author = ?
+    GROUP BY week
+    ORDER BY week DESC
+    LIMIT 8
+  ]]
+	local rows = db.query(sql, user)
+	local total, weeks = 0, 0
+	for _, row in ipairs(rows) do
+		total = total + row.count
+		weeks = weeks + 1
+	end
+	if weeks == 0 then
+		return 0
+	end
+	return math.floor(total / weeks)
 end
 
 return M

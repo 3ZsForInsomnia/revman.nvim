@@ -12,7 +12,7 @@ function M.sync_now()
 	local repo_name = utils.get_current_repo()
 	if not repo_name then
 		M.disable_background_sync() -- Stop any existing timer
-		log.info("revman.nvim: Not in a GitHub repository, skipping sync.")
+		log.info("Not in a GitHub repository, skipping sync.")
 		return
 	end
 
@@ -25,7 +25,7 @@ function M.enable_background_sync()
 
 	local freq = config.get().background.frequency or 15
 	if freq == 0 then
-		vim.notify("revman.nvim: Background sync is disabled by config.", vim.log.levels.INFO)
+		log.info("Background sync is disabled by config.")
 		return
 	end
 
@@ -37,7 +37,7 @@ function M.enable_background_sync()
 			M.sync_now()
 		end)
 	)
-	vim.notify("revman.nvim: Background sync enabled (every " .. freq .. " min)", vim.log.levels.INFO)
+	log.notify("Background sync enabled (every " .. freq .. " min)")
 end
 
 -- Disable background sync
@@ -46,7 +46,7 @@ function M.disable_background_sync()
 		sync_timer:stop()
 		sync_timer:close()
 		sync_timer = nil
-		vim.notify("revman.nvim: Background sync disabled.", vim.log.levels.INFO)
+		log.notify("Background sync disabled.")
 	end
 end
 
@@ -55,7 +55,7 @@ function M.setup_autosync()
 	local repo_name = utils.get_current_repo()
 	if not repo_name then
 		M.disable_background_sync()
-		log.info("revman.nvim: Not in a GitHub repository, skipping sync.")
+		log.info("Not in a GitHub repository, skipping sync.")
 		return
 	end
 

@@ -4,7 +4,7 @@ local log = require("revman.log")
 
 local has_sqlite, sqlite = pcall(require, "sqlite.db")
 if not has_sqlite then
-	vim.notify("revman.nvim requires kkharji/sqlite.lua to function properly", vim.log.levels.ERROR)
+	log.error("This plugin requires kkharji/sqlite.lua to function properly")
 	return M
 end
 

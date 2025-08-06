@@ -117,12 +117,13 @@ require("revman").setup({
 
 ## Configuration Options
 
-| Option                        | Default                                      | Description                          |
-|-------------------------------|----------------------------------------------|--------------------------------------|
-| `database.path`               | `vim.fn.stdpath("state") .. "/revman/revman.db"` | Path to the SQLite database      |
-| `retention.days`              | `30`                                         | Days to keep PRs (0 = keep forever)  |
-| `background.frequency`        | `15`                                         | Minutes between background syncs (0 = disable) |
-| `keymaps.save_notes`          | `"<leader>zz"`                               | Keybinding to save notes buffer      |
+| Option                   | Default                                             | Description                                   |
+|--------------------------|-----------------------------------------------------|-----------------------------------------------|
+| `database.path`          | `vim.fn.stdpath("state") .. "/revman/revman.db"`    | Path to the SQLite database                   |
+| `retention.days`         | `30`                                                | Days to keep PRs (0 = keep forever)           |
+| `background.frequency`   | `15`                                                | Minutes between background syncs (0 = disable)|
+| `keymaps.save_notes`     | `"<leader>zz"`                                      | Keybinding to save notes buffer               |
+
 
 ---
 
@@ -143,7 +144,6 @@ Run `:checkhealth revman` to verify all requirements and configuration.
 
 ## TODO
 
+Add more to per-user analytics
+Refactor commands - expose more util functions for consumers who want to do custom stuff
 Add error handling and logging everywhere
-
-Fix analytics data retrieval
-- And previews, right now is pretty simple

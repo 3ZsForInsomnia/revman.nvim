@@ -34,7 +34,6 @@ local function get_gh_pr_view_cmd(pr_number, repo)
 	}
 end
 
--- Helper to build gh api comments command
 local function get_gh_comments_cmd(pr_number, repo)
 	return {
 		"gh",
@@ -45,7 +44,6 @@ local function get_gh_comments_cmd(pr_number, repo)
 	}
 end
 
--- Synchronous runner
 local function run_gh_cmd_sync(cmd)
 	local lines = vim.fn.systemlist(table.concat(cmd, " "))
 	if vim.v.shell_error ~= 0 or #lines == 0 then

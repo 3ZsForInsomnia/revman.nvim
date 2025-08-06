@@ -16,6 +16,14 @@ local cmd_utils = require("revman.command-utils")
 
 local M = {}
 
+local function sanitize_status_name(status)
+	-- Remove leading/trailing quotes if present
+	if type(status) == "string" then
+		status = status:gsub('^"(.*)"$', "%1")
+	end
+	return status
+end
+
 -- 1. Sync all PRs
 vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()
 	workflows.sync_all_tracked_prs_async()
@@ -67,7 +75,8 @@ vim.api.nvim_create_user_command("RevmanListOpenPRs", function()
 end, {})
 
 vim.api.nvim_create_user_command("RevmanListPRsNeedingReview", function()
-	local prs = db_prs.list_with_status({ where = { review_status = "waiting_for_review" } })
+	local status_id = db_status.get_id("waiting_for_review")
+	local prs = db_prs.list_with_status({ where = { review_status_id = status_id, state = "OPEN" } })
 	telescope_prs.pick_prs(prs, nil, "PRs Needing Review", cmd_utils.default_pr_select_callback)
 end, {})
 
@@ -80,7 +89,6 @@ vim.api.nvim_create_user_command("RevmanListMergedPRs", function()
 	telescope_prs.pick_prs(prs, nil, "Merged PRs", cmd_utils.default_pr_select_callback)
 end, {})
 
--- 6. List repos (Telescope)
 vim.api.nvim_create_user_command("RevmanListRepos", function()
 	telescope_repos.pick_repos()
 end, {})
@@ -125,7 +133,8 @@ vim.api.nvim_create_user_command("RevmanSetStatus", function(opts)
 		end
 		local function set_status(status)
 			if status then
-				workflows.set_status(pr.id, status)
+				status = sanitize_status_name(status)
+				db_prs.set_review_status(pr.id, status)
 				log.info("PR #" .. pr.number .. " status updated to: " .. status)
 			end
 		end
@@ -155,7 +164,7 @@ end, {
 -- RevmanSetStatusForCurrentPR: for automation/keybindings
 vim.api.nvim_create_user_command("RevmanSetStatusForCurrentPR", function(opts)
 	local bufname = vim.api.nvim_buf_get_name(0)
-	local pr_number = bufname:match("pr/(%d+)") -- adjust pattern for Octo buffer naming
+	local pr_number = cmd_utils.extract_pr_number_from_octobuffer(bufname)
 	if not pr_number then
 		log.error("Could not infer PR number from buffer name.")
 		return
@@ -168,7 +177,8 @@ vim.api.nvim_create_user_command("RevmanSetStatusForCurrentPR", function(opts)
 	local status_arg = opts.args
 	local function set_status(status)
 		if status then
-			workflows.set_status(pr.id, status)
+			status = sanitize_status_name(status)
+			db_prs.set_review_status(pr.id, status)
 			log.info("PR #" .. pr.number .. " status updated to: " .. status)
 		end
 	end
@@ -233,10 +243,11 @@ vim.api.nvim_create_user_command("RevmanShowNotes", function(opts)
 end, { nargs = "?" })
 
 vim.api.nvim_create_user_command("RevmanNudgePRs", function()
-	local prs = db_prs.list_with_status({ where = { review_status = "needs_nudge" } })
+	local status_id = db_status.get_id("needs_nudge")
+	local prs = db_prs.list_with_status({ where = { review_status_id = status_id } })
 	if #prs == 0 then
 		log.notify("No PRs need a nudge!", "info")
-		log.info("No PRs need a nudge!")
+		log.info("No PRs need a nudge")
 		return
 	end
 	telescope_prs.pick_prs(prs, nil, "PRs Needing a Nudge", cmd_utils.default_pr_select_callback)
@@ -246,13 +257,13 @@ end, {})
 vim.api.nvim_create_user_command("RevmanEnableBackgroundSync", function()
 	sync.enable_background_sync()
 	log.info("Background sync enabled.")
-	log.notify("Background sync enabled.", "info")
+	log.notify("Background sync enabled.")
 end, {})
 
 vim.api.nvim_create_user_command("RevmanDisableBackgroundSync", function()
 	sync.disable_background_sync()
 	log.info("Background sync disabled.")
-	log.notify("Background sync disabled.", "info")
+	log.notify("Background sync disabled.")
 end, {})
 
 vim.api.nvim_create_user_command("RevmanAddPR", function(opts)
@@ -281,6 +292,7 @@ vim.api.nvim_create_user_command("RevmanAddPR", function(opts)
 	pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
 	db_prs.add(pr_db_row)
 	log.info("Added PR #" .. pr_number .. " to local database.")
+	log.notify("Added PR #" .. pr_number .. " to local database.")
 end, { nargs = 1 })
 
 vim.api.nvim_create_user_command("RevmanAddRepo", function(opts)
@@ -315,6 +327,7 @@ vim.api.nvim_create_user_command("RevmanAddRepo", function(opts)
 	end
 	if existing then
 		log.info("Repo already exists: " .. repo_name .. " (" .. directory .. ")")
+		log.notify("Repo already exists: " .. repo_name .. " (" .. directory .. ")")
 		return
 	end
 
@@ -323,6 +336,7 @@ vim.api.nvim_create_user_command("RevmanAddRepo", function(opts)
 	if repo_row then
 		db_repos.update(repo_row.id, { directory = directory })
 		log.info("Added repo: " .. repo_name .. " (" .. directory .. ")")
+		log.notify("Added repo: " .. repo_name .. " (" .. directory .. ")")
 	else
 		log.error("Failed to add repo: " .. repo_name)
 	end
