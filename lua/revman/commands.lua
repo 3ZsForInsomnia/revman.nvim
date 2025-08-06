@@ -24,41 +24,36 @@ local function sanitize_status_name(status)
 	return status
 end
 
--- 1. Sync all PRs
 vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()
-	workflows.sync_all_tracked_prs_async()
+	workflows.sync_all_prs(nil, false, function(success)
+		if not success then
+			log.error("Some PRs failed to sync.")
+		end
+	end)
 end, {})
 
--- 2. Sync a single PR
 vim.api.nvim_create_user_command("RevmanSyncPR", function(opts)
 	local pr_number = tonumber(opts.args)
+
+	local sync_fn = function(pr_num)
+		workflows.sync_pr(pr_num, nil, function(pr_id, err)
+			if err then
+				log.error("Error syncing PR #" .. pr_num .. ": " .. err .. ". Make sure the current repo is added!")
+			elseif pr_id then
+				log.info("PR synced: " .. pr_id)
+			end
+		end)
+	end
+
 	if not pr_number then
 		cmd_utils.prompt_select_pr(function(selected_pr)
 			if selected_pr then
-				local pr_id, err = workflows.sync_pr(selected_pr.number)
-				if err then
-					return log.error(
-						"Error syncing PR #"
-							.. selected_pr.number
-							.. ": "
-							.. err
-							.. ". Make sure the current repo is added!"
-					)
-				end
-				if pr_id then
-					log.info("PR synced: " .. pr_id)
-				end
+				sync_fn(selected_pr.number)
 			end
 		end)
 		return
-	end
-
-	local pr_id, err = workflows.sync_pr(pr_number)
-	if err then
-		return log.error("Error syncing PR #" .. pr_number .. ": " .. err .. ". Make sure the current repo is added!")
-	end
-	if pr_id then
-		log.info("PR synced: " .. pr_id)
+	else
+		sync_fn(pr_number)
 	end
 end, { nargs = 1 })
 
@@ -98,26 +93,32 @@ vim.api.nvim_create_user_command("RevmanListAuthors", function()
 	telescope_authors.pick_authors_with_preview()
 end, {})
 
--- 8. Review PR (select for review, open in Octo)
 vim.api.nvim_create_user_command("RevmanReviewPR", function(opts)
 	cmd_utils.resolve_pr(opts.args, function(pr)
 		if not pr then
 			local pr_number = tonumber(opts.args)
 			if pr_number then
 				local repo_name = utils.get_current_repo()
-				local pr_data = github_data.get_pr(pr_number, repo_name)
-				if pr_data then
-					local repo_row = utils.ensure_repo(repo_name)
-					local pr_db_row = github_prs.extract_pr_fields(pr_data)
-					pr_db_row.repo_id = repo_row.id
-					pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
-					db_prs.add(pr_db_row)
-					pr = db_prs.get_by_repo_and_number(repo_row.id, pr_number)
-				end
+				github_data.get_pr_async(pr_number, repo_name, function(pr_data, err)
+					if pr_data then
+						local repo_row = utils.ensure_repo(repo_name)
+						local pr_db_row = github_prs.extract_pr_fields(pr_data)
+						pr_db_row.repo_id = repo_row.id
+						pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
+						db_prs.add(pr_db_row)
+						pr = db_prs.get_by_repo_and_number(repo_row.id, pr_number)
+						if not pr then
+							log.error("No PR selected or found.")
+							return
+						end
+						workflows.select_pr_for_review(pr.id)
+					else
+						log.error("No PR selected or found.")
+					end
+				end)
+				return
 			end
-		end
-		if not pr then
-			print("No PR selected or found.")
+			log.error("No PR selected or found.")
 			return
 		end
 		workflows.select_pr_for_review(pr.id)
@@ -277,22 +278,23 @@ vim.api.nvim_create_user_command("RevmanAddPR", function(opts)
 		log.error("Could not determine current repo.")
 		return
 	end
-	local pr_data = github_data.get_pr(pr_number, repo_name)
-	if not pr_data then
-		log.error("Could not fetch PR #" .. pr_number .. " from GitHub.")
-		return
-	end
-	local repo_row = utils.ensure_repo(repo_name)
-	if not repo_row then
-		log.error("Could not ensure repo in DB.")
-		return
-	end
-	local pr_db_row = github_prs.extract_pr_fields(pr_data)
-	pr_db_row.repo_id = repo_row.id
-	pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
-	db_prs.add(pr_db_row)
-	log.info("Added PR #" .. pr_number .. " to local database.")
-	log.notify("Added PR #" .. pr_number .. " to local database.")
+	github_data.get_pr_async(pr_number, repo_name, function(pr_data, err)
+		if not pr_data then
+			log.error("Could not fetch PR #" .. pr_number .. " from GitHub.")
+			return
+		end
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Could not ensure repo in DB.")
+			return
+		end
+		local pr_db_row = github_prs.extract_pr_fields(pr_data)
+		pr_db_row.repo_id = repo_row.id
+		pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
+		db_prs.add(pr_db_row)
+		log.info("Added PR #" .. pr_number .. " to local database.")
+		log.notify("Added PR #" .. pr_number .. " to local database.")
+	end)
 end, { nargs = 1 })
 
 vim.api.nvim_create_user_command("RevmanAddRepo", function(opts)

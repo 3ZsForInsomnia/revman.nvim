@@ -16,10 +16,15 @@ function M.sync_now()
 		return
 	end
 
-	workflows.sync_all_tracked_prs_async()
+	workflows.sync_all_prs(repo_name, false, function(success)
+		if success then
+			log.info("All tracked PRs synced successfully")
+		else
+			log.error("Some PRs failed to sync.")
+		end
+	end)
 end
 
--- Enable background sync (runs every N minutes as configured)
 function M.enable_background_sync()
 	M.disable_background_sync() -- Ensure no duplicate timers
 
@@ -40,7 +45,6 @@ function M.enable_background_sync()
 	log.notify("Background sync enabled (every " .. freq .. " min)")
 end
 
--- Disable background sync
 function M.disable_background_sync()
 	if sync_timer then
 		sync_timer:stop()
@@ -50,7 +54,6 @@ function M.disable_background_sync()
 	end
 end
 
--- Optionally, start background sync on startup if configured
 function M.setup_autosync()
 	local repo_name = utils.get_current_repo()
 	if not repo_name then

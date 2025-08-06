@@ -108,7 +108,6 @@ function M.get_all_review_comments(repo, pr_number)
 	return run_gh_cmd_sync(get_gh_comments_cmd(pr_number, repo)) or {}
 end
 
--- Asynchronous get_pr
 function M.get_pr_async(pr_number, repo, callback)
 	repo = repo or get_current_repo()
 	if not repo then
