@@ -17,22 +17,6 @@ function M.upsert_pr(db_prs, db_repos, pr_row)
 	end
 end
 
-function M.set_review_status(db_prs, pr_id, status_name)
-	return db_prs.set_review_status(pr_id, status_name)
-end
-
-function M.get_review_status(db_prs, pr_id)
-	return db_prs.get_review_status(pr_id)
-end
-
-function M.get_pr(db_prs, pr_id)
-	return db_prs.get_by_id(pr_id)
-end
-
-function M.list_prs(db_prs, opts)
-	return db_prs.list(opts)
-end
-
 function M.needs_attention(db_prs, pr_id)
 	local pr = db_prs.get_by_id(pr_id)
 	if not pr then

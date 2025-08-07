@@ -1,10 +1,8 @@
 local M = {}
 
-local with_db = require("revman.db.create").with_db
+local with_db = require("revman.db.helpers").with_db
 local status = require("revman.db.status")
 local log = require("revman.log")
-
-local defaultSort = { desc = { "number" } }
 
 function M.add(pr)
 	with_db(function(db)
@@ -48,25 +46,6 @@ function M.get_by_repo_and_number(repo_id, number)
 	end)
 end
 
-function M.set_review_status(pr_id, status_name)
-	local status_id = status.get_id(status_name)
-	if not status_id then
-		log.error("db_prs.set_review_status: Unknown status: " .. status_name)
-		return false
-	end
-
-	return with_db(function(db)
-		-- Get old status before updating
-		local pr = db:select("pull_requests", { where = { id = pr_id } })[1]
-		local old_status = pr and status.get_name(pr.review_status_id) or nil
-
-		db:update("pull_requests", { set = { review_status_id = status_id }, where = { id = pr_id } })
-
-		M.maybe_transition_status(pr_id, old_status, status_name)
-		return true
-	end)
-end
-
 function M.update(id, updates)
 	if not id then
 		error("db_prs.update: id is nil")
@@ -78,88 +57,6 @@ function M.update(id, updates)
 	with_db(function(db)
 		db:update("pull_requests", { set = updates, where = { id = id } })
 	end)
-end
-
-function M.get_review_status(pr_id)
-	local pr = M.get_by_id(pr_id)
-	if not pr then
-		return nil, "PR not found"
-	end
-	return status.get_name(pr.review_status_id)
-end
-
-function M.list(opts)
-	return with_db(function(db)
-		local query_opts = {}
-		if opts then
-			query_opts.where = opts.where
-			query_opts.order_by = opts.order_by
-		end
-		if not query_opts.order_by then
-			query_opts.order_by = defaultSort
-		end
-		local rows = db:select("pull_requests", query_opts)
-		return rows
-	end)
-end
-
-function M.list_with_status(opts)
-	return with_db(function(db)
-		local query_opts = {}
-		if opts then
-			query_opts.where = opts.where
-			query_opts.order_by = opts.order_by
-		end
-		if not query_opts.order_by then
-			query_opts.order_by = defaultSort
-		end
-		local rows = db:select("pull_requests", query_opts)
-		for _, pr in ipairs(rows) do
-			pr.review_status = status.get_name(pr.review_status_id)
-		end
-		return rows
-	end)
-end
-
-function M.list_open(opts)
-	return with_db(function(db)
-		local query_opts = {}
-		query_opts.where = { state = "OPEN" }
-		if opts and opts.order_by then
-			query_opts.order_by = opts.order_by
-		else
-			query_opts.order_by = defaultSort
-		end
-		local rows = db:select("pull_requests", query_opts)
-		return rows
-	end)
-end
-
-function M.list_merged(opts)
-	return with_db(function(db)
-		local query_opts = {}
-		query_opts.where = { state = "MERGED" }
-		if opts and opts.order_by then
-			query_opts.order_by = opts.order_by
-		else
-			query_opts.order_by = defaultSort
-		end
-		local rows = db:select("pull_requests", query_opts)
-		return rows
-	end)
-end
-
-M.maybe_transition_status = function(pr_id, old_status, new_status)
-	if not new_status or new_status == old_status then
-		return
-	end
-
-	M.set_review_status(pr_id, new_status)
-
-	local from_id = status.get_id(old_status)
-	local to_id = status.get_id(new_status)
-
-	status.add_status_transition(pr_id, from_id, to_id)
 end
 
 function M.count_comments_by(user)

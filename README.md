@@ -69,9 +69,6 @@ require("revman").setup({
   background = {
     frequency = 15, -- minutes between background syncs (0 = disable)
   },
-  keymaps = {
-    save_notes = "<leader>zz", -- keybinding to save notes buffer
-  },
   log_level = "warn", -- "info", "warn", or "error"
 })
 ```
@@ -99,7 +96,6 @@ require("revman").setup({
 
 - For PR-specific commands, if no PR ID/number is given, you will be prompted to select one.
 - For status selection, a dropdown will appear.
-- Notes are edited in a buffer and saved with the configured keybinding.
 
 ---
 
@@ -122,7 +118,6 @@ require("revman").setup({
 | `database.path`          | `vim.fn.stdpath("state") .. "/revman/revman.db"`    | Path to the SQLite database                   |
 | `retention.days`         | `30`                                                | Days to keep PRs (0 = keep forever)           |
 | `background.frequency`   | `15`                                                | Minutes between background syncs (0 = disable)|
-| `keymaps.save_notes`     | `"<leader>zz"`                                      | Keybinding to save notes buffer               |
 
 
 ---
@@ -142,8 +137,14 @@ Run `:checkhealth revman` to verify all requirements and configuration.
 - Background and manual sync with GitHub
 - Integration with Octo.nvim for PR review UI
 
-## TODO
+## To do
 
-Add more to per-user analytics
-Refactor commands - expose more util functions for consumers who want to do custom stuff
-Add error handling and logging everywhere
+Clean up logging/vim.notify usage
+- There's some duplication still
+
+Take some screenshots and gifs of usage
+Update the readme
+Create a comprehensive doc.txt
+- Make sure users can do `:help revman` to see the doc.txt
+
+Publish on reddit!

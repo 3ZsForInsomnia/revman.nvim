@@ -1,6 +1,6 @@
 local M = {}
 
-local with_db = require("revman.db.create").with_db
+local with_db = require("revman.db.helpers").with_db
 
 function M.get_id(name)
 	return with_db(function(db)

@@ -13,10 +13,6 @@ M.defaults = {
 		frequency = 15, -- Set to 0 to disable background checks
 	},
 
-	keymaps = {
-		save_notes = "<leader>zz", -- Set to nil or empty string to disable
-	},
-
 	log_level = "error", -- "info", "warn", or "error"
 }
 

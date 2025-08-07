@@ -2,7 +2,10 @@ local github_data = require("revman.github.data")
 local ci = require("revman.github.ci")
 local github_prs = require("revman.github.prs")
 local db_prs = require("revman.db.prs")
+local pr_lists = require("revman.db.pr_lists")
+local pr_status = require("revman.db.pr_status")
 local db_repos = require("revman.db.repos")
+local db_comments = require("revman.db.comments")
 local status = require("revman.db.status")
 local logic_prs = require("revman.logic.prs")
 local utils = require("revman.utils")
@@ -28,7 +31,7 @@ function M.sync_all_prs(repo_name, sync_all, callback)
 		query.where.state = "OPEN"
 	end
 
-	local tracked_prs = db_prs.list(query)
+	local tracked_prs = pr_lists.list(query)
 	if #tracked_prs == 0 then
 		log.info("No tracked PRs to sync for this repo.")
 		return
@@ -91,7 +94,7 @@ function M.sync_pr(pr_number, repo_name, callback)
 		end
 
 		local existing_pr = db_prs.get_by_repo_and_number(pr_db_row.repo_id, pr_db_row.number)
-		local old_status = existing_pr and db_prs.get_review_status(existing_pr.id) or nil
+		local old_status = existing_pr and pr_status.get_review_status(existing_pr.id) or nil
 		local new_status = old_status
 
 		-- Status transition logic
@@ -130,11 +133,29 @@ function M.sync_pr(pr_number, repo_name, callback)
 			status.add_status_transition(pr_id, nil, pr_db_row.review_status_id)
 		end
 
-		db_prs.maybe_transition_status(pr_id, old_status, new_status)
+		pr_status.maybe_transition_status(pr_id, old_status, new_status)
 
 		if pr_data.statusCheckRollup and type(pr_data.statusCheckRollup) == "table" then
 			pr_db_row.ci_status = ci.extract_ci_status(pr_data)
 		end
+
+		github_data.get_comments_async(pr_number, repo_name, function(comments)
+			local formatted_comments = {}
+			for _, c in ipairs(comments or {}) do
+				local author = c.user and c.user.login or "unknown"
+				local created_at = c.createdAt or c.created_at
+				if author and created_at then
+					table.insert(formatted_comments, {
+						github_id = c.id,
+						author = author,
+						created_at = created_at,
+						body = c.body,
+						in_reply_to_id = c.in_reply_to_id,
+					})
+				end
+			end
+			db_comments.replace_for_pr(pr_id, formatted_comments)
+		end)
 
 		callback(pr_id, nil)
 	end)
@@ -149,12 +170,12 @@ function M.select_pr_for_review(pr_id)
 	local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
 	db_prs.update(pr.id, { last_viewed = now })
 
-	local old_status = db_prs.get_review_status(pr.id)
+	local old_status = pr_status.get_review_status(pr.id)
 	local new_status = old_status
 	if old_status == "waiting_for_review" then
 		new_status = "waiting_for_changes"
 	end
-	db_prs.maybe_transition_status(pr.id, old_status, new_status)
+	pr_status.maybe_transition_status(pr.id, old_status, new_status)
 
 	-- Open in Octo (if available)
 	vim.cmd(string.format("Octo pr view %d", pr.number))

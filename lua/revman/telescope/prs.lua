@@ -7,7 +7,7 @@ local action_state = require("telescope.actions.state")
 local ci = require("revman.github.ci")
 local cmd_utils = require("revman.command-utils")
 local db_status = require("revman.db.status")
-local db_prs = require("revman.db.prs")
+local pr_status = require("revman.db.pr_status")
 local log = require("revman.log")
 
 local M = {}
@@ -109,7 +109,7 @@ local function make_picker(prs, opts, title, on_select)
 						end
 						vim.ui.select(statuses, { prompt = "Set PR Status" }, function(selected_status)
 							if selected_status then
-								db_prs.set_review_status(pr.id, selected_status)
+								pr_status.set_review_status(pr.id, selected_status)
 								log.info("PR #" .. pr.number .. " status updated to: " .. selected_status)
 							end
 						end)

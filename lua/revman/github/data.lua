@@ -44,20 +44,6 @@ local function get_gh_comments_cmd(pr_number, repo)
 	}
 end
 
-local function run_gh_cmd_sync(cmd)
-	local lines = vim.fn.systemlist(table.concat(cmd, " "))
-	if vim.v.shell_error ~= 0 or #lines == 0 then
-		return nil
-	end
-	local output = table.concat(lines, "\n")
-	local ok, json = pcall(vim.json.decode, output)
-	if not ok or not json then
-		return nil
-	end
-	return json
-end
-
--- Asynchronous runner
 local function run_gh_cmd_async(cmd, callback)
 	local stdout = vim.loop.new_pipe(false)
 	local output = {}
@@ -88,24 +74,8 @@ local function run_gh_cmd_async(cmd, callback)
 	end)
 end
 
--- Synchronous get_pr
-function M.get_pr(pr_number, repo)
-	repo = repo or get_current_repo()
-	if not repo then
-		return nil, "Not in a GitHub repository"
-	end
-	local pr = run_gh_cmd_sync(get_gh_pr_view_cmd(pr_number, repo))
-	if not pr then
-		return nil, "Failed to fetch PR metadata"
-	end
-	local comments = run_gh_cmd_sync(get_gh_comments_cmd(pr_number, repo))
-	pr.comment_count = comments and #comments or 0
-	return pr
-end
-
--- Synchronous get_all_review_comments
-function M.get_all_review_comments(repo, pr_number)
-	return run_gh_cmd_sync(get_gh_comments_cmd(pr_number, repo)) or {}
+function M.get_comments_async(pr_number, repo, callback)
+	run_gh_cmd_async(get_gh_comments_cmd(pr_number, repo), callback)
 end
 
 function M.get_pr_async(pr_number, repo, callback)
@@ -187,6 +157,20 @@ function M.convert_pr_to_db(pr, repo_id)
 		review_status_id = nil,
 		comment_count = 0,
 	}
+end
+
+function M.get_canonical_repo_name(repo)
+	if repo and repo:find("/") then
+		return repo
+	end
+
+	local lines = vim.fn.systemlist("gh repo view --json nameWithOwner -q .nameWithOwner")
+
+	if vim.v.shell_error == 0 and lines[1] and lines[1] ~= "" then
+		return lines[1]:gsub("\n", "")
+	end
+
+	return repo
 end
 
 return M

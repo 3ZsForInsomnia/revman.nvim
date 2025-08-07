@@ -1,22 +1,11 @@
-local db_prs = require("revman.db.prs")
+local pr_lists = require("revman.pr_lists")
 local db_status = require("revman.db.status")
 local utils = require("revman.utils")
 
 local M = {}
 
-function M.analytics_by_author()
-	local all_prs = db_prs.list()
-	local by_author = {}
-	for _, pr in ipairs(all_prs) do
-		local author = pr.author or "unknown"
-		by_author[author] = by_author[author] or {}
-		table.insert(by_author[author], pr)
-	end
-	return by_author
-end
-
 function M.average_pr_age_at_merge()
-	local prs = db_prs.list()
+	local prs = pr_lists.list()
 	local ages = {}
 	for _, pr in ipairs(prs) do
 		if pr.state == "MERGED" then
@@ -55,7 +44,7 @@ function M.prs_reviewed_over_time()
 end
 
 function M.approved_without_changes()
-	local prs = db_prs.list()
+	local prs = pr_lists.list()
 	local result = {}
 	for _, pr in ipairs(prs) do
 		local history = db_status.get_status_history(pr.id)
@@ -74,7 +63,7 @@ function M.approved_without_changes()
 end
 
 function M.revisits_after_changes()
-	local prs = db_prs.list()
+	local prs = pr_lists.list()
 	local revisits = {}
 	for _, pr in ipairs(prs) do
 		local history = db_status.get_status_history(pr.id)
@@ -91,22 +80,6 @@ function M.revisits_after_changes()
 		revisits[pr.id] = count
 	end
 	return revisits
-end
-
-function M.authors_with_preview()
-	local by_author = M.analytics_by_author()
-	local avg_age = M.average_pr_age_at_merge()
-	local result = {}
-	for author, prs in pairs(by_author) do
-		table.insert(result, {
-			author = author,
-			pr_count = #prs,
-			avg_age_at_merge = avg_age[author] or 0,
-			-- comments = db_prs.count_comments_by(author),
-			-- comments_per_week = db_prs.comments_per_week(author),
-		})
-	end
-	return result
 end
 
 return M

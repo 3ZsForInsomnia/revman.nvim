@@ -1,21 +1,24 @@
 local M = {}
 
-local github_data = require("revman.github.data")
 local db_repos = require("revman.db.repos")
 local config = require("revman.config")
 
-M.format_relative_time = function(timestamp)
-	local now = os.time()
-	local diff = now - timestamp
-	if diff < 60 then
-		return diff .. "s ago"
-	elseif diff < 3600 then
-		return math.floor(diff / 60) .. "m ago"
-	elseif diff < 86400 then
-		return math.floor(diff / 3600) .. "h ago"
-	else
-		return math.floor(diff / 86400) .. "d ago"
+M.format_relative_time = function(seconds)
+	if not seconds or seconds < 0 then
+		return "N/A"
 	end
+	local days = math.floor(seconds / 86400)
+	local hours = math.floor((seconds % 86400) / 3600)
+	local mins = math.floor((seconds % 3600) / 60)
+	local parts = {}
+	if days > 0 then
+		table.insert(parts, days .. "d")
+	end
+	if hours > 0 or days > 0 then
+		table.insert(parts, hours .. "h")
+	end
+	table.insert(parts, mins .. "m")
+	return table.concat(parts, " ")
 end
 
 M.parse_iso8601 = function(str)

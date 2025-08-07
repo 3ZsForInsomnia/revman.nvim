@@ -17,9 +17,7 @@ function M.sync_now()
 	end
 
 	workflows.sync_all_prs(repo_name, false, function(success)
-		if success then
-			log.info("All tracked PRs synced successfully")
-		else
+		if not success then
 			log.error("Some PRs failed to sync.")
 		end
 	end)

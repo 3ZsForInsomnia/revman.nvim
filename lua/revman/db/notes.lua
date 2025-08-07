@@ -1,5 +1,5 @@
 local M = {}
-local with_db = require("revman.db.create").with_db
+local with_db = require("revman.db.helpers").with_db
 
 function M.add(pr_id, content, updated_at)
 	with_db(function(db)

@@ -1,35 +1,7 @@
-local M = {}
-
+local config = require("revman.config")
 local log = require("revman.log")
 
-local has_sqlite, sqlite = pcall(require, "sqlite.db")
-if not has_sqlite then
-	log.error("This plugin requires kkharji/sqlite.lua to function properly")
-	return M
-end
-
-local config = require("revman.config")
-
-M.get_db = function()
-	local db_path = config.get().database.path
-
-	return sqlite:open(db_path)
-end
-
-M.with_db = function(fn)
-	local db = M.get_db()
-	local ok, result_or_err = pcall(fn, db)
-	local close_ok, close_err = pcall(function()
-		db:close()
-	end)
-	if not ok then
-		error(result_or_err)
-	end
-	if not close_ok then
-		error("DB close failed: " .. tostring(close_err))
-	end
-	return result_or_err
-end
+local M = {}
 
 M.ensure_schema = function()
 	local db_path = config.get().database.path
@@ -107,6 +79,18 @@ M.ensure_schema = function()
 			FOREIGN KEY(to_status_id) REFERENCES review_status(id)
 		)
 		]],
+		[[
+      CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY,
+        github_id INTEGER UNIQUE,
+        pr_id INTEGER NOT NULL,
+        author TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        body TEXT,
+        in_reply_to_id INTEGER,
+        FOREIGN KEY(pr_id) REFERENCES pull_requests(id)
+      )
+    ]],
 	}
 
 	for _, stmt in ipairs(stmts) do
@@ -141,49 +125,6 @@ M.ensure_schema = function()
 	else
 		log.error("DB file does NOT exist after schema creation: " .. db_path)
 	end
-end
-
-M.get_review_status_id = function(name)
-	if not name then
-		return nil
-	end
-
-	local db = M.get_db()
-	local rows = db:select("review_status", { where = { name = name } })
-	db:close()
-	return rows[1] and rows[1].id or nil
-end
-
-M.get_review_status_name = function(id)
-	if not id then
-		return nil
-	end
-
-	local db = M.get_db()
-	local rows = db:select("review_status", { where = { id = id } })
-	db:close()
-	return rows[1] and rows[1].name or nil
-end
-
-function M.set_review_status(pr_id, status_name)
-	local status_id = M.get_review_status_id(status_name)
-	if not status_id then
-		return false, "Unknown status: " .. status_name
-	end
-	local db = M.get_db()
-	db:update("pull_requests", { review_status_id = status_id }, { id = pr_id })
-	db:close()
-	return true
-end
-
-function M.get_review_status(pr_id)
-	local db = M.get_db()
-	local pr = db:select("pull_requests", { where = { id = pr_id } })
-	db:close()
-	if not pr[1] then
-		return nil, "PR not found"
-	end
-	return M.get_review_status_name(pr[1].review_status_id)
 end
 
 return M

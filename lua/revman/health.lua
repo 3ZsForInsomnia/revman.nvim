@@ -11,16 +11,16 @@ local function check_sqlite()
 end
 
 local function check_db_schema()
-	local ok, db_create = pcall(require, "revman.db.create")
+	local ok, db_schema = pcall(require, "revman.db.schema")
 	if not ok then
-		vim.health.error("Could not load revman.db.create: " .. tostring(db_create))
+		vim.health.error("Could not load revman.db.schema: " .. tostring(db_schema))
 		return
 	end
 	local db_path = config.get().database.path
 	local stat = vim.loop.fs_stat(db_path)
 	if not (stat and stat.type == "file") then
 		-- Try to create the DB/schema
-		local ok_schema, err = pcall(db_create.ensure_schema)
+		local ok_schema, err = pcall(db_schema.ensure_schema)
 		if not ok_schema then
 			vim.health.error("Failed to create DB schema: " .. tostring(err))
 			return

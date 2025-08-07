@@ -1,5 +1,3 @@
-local config = require("revman.config")
-
 local levels = { error = 1, warn = 2, info = 3 }
 local messagePrefix = "[Revman.nvim]: "
 
@@ -8,10 +6,10 @@ local M = {}
 M.log_levels = { error = vim.log.levels.ERROR, warn = vim.log.levels.WARN, info = vim.log.levels.INFO }
 
 local function should_log(level)
-	local cfg = config.get()
+	local cfg = require("revman.config").get()
 	local user_level = cfg.log_level or "warn"
 
-	return levels[level] >= levels[user_level]
+	return levels[level] <= levels[user_level]
 end
 
 M.info = function(msg)
