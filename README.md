@@ -7,7 +7,7 @@ The core workflow is simple:
 - **Browse PRs** (especially those "waiting for review") using Telescope.
 - **Open the PR in Octo.nvim** for a full-featured review.
 - **Mark the PR as "waiting for changes"** when you’re done.
-- **Optionally add a note** for personal reminders.
+- **Optionally add a note** for future references outside of comments.
 - **Let revman.nvim sync PRs in the background** so your review queue is always up to date.
 
 And it also includes features like analytics and advanced filtering - handy extras to help you stay organized and productive!
@@ -103,9 +103,10 @@ require("revman").setup({
 
 ---
 
-For full details and advanced usage, see `:help revman` (coming soon).
+For full details and advanced usage, see `:help revman`.
 
-## To do
+## Roadmap
 
-Take some screenshots and gifs of usage
-Publish on reddit!
+- [ ] Add images and gifs of usage to the README
+- [ ] Simplifying and documenting exposed API
+- [ ] Allowing support for other pickers than Telescope
