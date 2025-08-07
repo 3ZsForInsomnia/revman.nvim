@@ -21,6 +21,7 @@ vim.api.nvim_create_user_command("RevmanSyncPR", function(opts)
 				log.error("Error syncing PR #" .. pr_num .. ": " .. err .. ". Make sure the current repo is added!")
 			elseif pr_id then
 				log.info("PR synced: " .. pr_id)
+				log.notify("PR synced: " .. pr_id)
 			end
 		end)
 	end

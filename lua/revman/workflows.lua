@@ -55,7 +55,7 @@ function M.sync_all_prs(repo_name, sync_all, callback)
 					log.error("Some PRs failed to sync: " .. table.concat(errors, "; "))
 				else
 					log.info("All tracked PRs synced successfully: " .. vim.inspect(results))
-					log.notify("All tracked PRs synced successfully")
+					log.notify("All tracked PRs synced successfully" .. vim.inspect(results))
 				end
 				if callback then
 					callback(#errors == 0)
