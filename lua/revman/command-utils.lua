@@ -3,6 +3,7 @@ local db_prs = require("revman.db.prs")
 local pr_lists = require("revman.db.pr_lists")
 local pr_status = require("revman.db.pr_status")
 local log = require("revman.log")
+local utils = require("revman.utils")
 
 local M = {}
 
@@ -64,19 +65,23 @@ function M.extract_pr_number_from_octobuffer(bufname)
 end
 
 function M.select_status_and_set(pr, status_arg)
+	status_arg = utils.strip_quotes(status_arg)
 	local function set_status(status)
 		if status then
 			pr_status.set_review_status(pr.id, status)
 			log.info("PR #" .. pr.number .. " status updated to: " .. status)
 		end
 	end
+
 	if status_arg then
 		set_status(status_arg)
 	else
 		local statuses = {}
+
 		for _, s in ipairs(db_status.list()) do
 			table.insert(statuses, s.name)
 		end
+
 		vim.ui.select(statuses, { prompt = "Select status" }, set_status)
 	end
 end

@@ -28,6 +28,7 @@ end
 
 function M.set_review_status(pr_id, status_name)
 	local status_id = status.get_id(status_name)
+
 	if not status_id then
 		log.error("db_prs.set_review_status: Unknown status: " .. status_name)
 		return false
@@ -41,6 +42,7 @@ function M.set_review_status(pr_id, status_name)
 		db:update("pull_requests", { set = { review_status_id = status_id }, where = { id = pr_id } })
 
 		M.maybe_transition_status(pr_id, old_status, status_name)
+
 		return true
 	end)
 end

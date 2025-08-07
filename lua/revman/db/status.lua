@@ -1,6 +1,7 @@
 local M = {}
 
 local with_db = require("revman.db.helpers").with_db
+local log = require("revman.log")
 
 function M.get_id(name)
 	return with_db(function(db)
@@ -8,9 +9,7 @@ function M.get_id(name)
 		if rows[1] then
 			return rows[1].id
 		else
-			db:insert("review_status", { name = name })
-			local new_rows = db:select("review_status", { where = { name = name } })
-			return new_rows[1] and new_rows[1].id or nil
+			log.error("Unknown status: " .. name)
 		end
 	end)
 end
@@ -23,18 +22,6 @@ function M.get_name(id)
 	return with_db(function(db)
 		local rows = db:select("review_status", { where = { id = id } })
 		return rows[1] and rows[1].name or nil
-	end)
-end
-
-function M.add(name)
-	with_db(function(db)
-		db:insert("review_status", { name = name })
-	end)
-end
-
-function M.delete(id)
-	with_db(function(db)
-		db:delete("review_status", { id = id })
 	end)
 end
 

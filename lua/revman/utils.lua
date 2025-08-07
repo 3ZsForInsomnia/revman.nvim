@@ -81,4 +81,8 @@ M.db_file_exists = function()
 	return stat and stat.type == "file"
 end
 
+function M.strip_quotes(s)
+	return s and s:gsub('^"(.*)"$', "%1") or s
+end
+
 return M

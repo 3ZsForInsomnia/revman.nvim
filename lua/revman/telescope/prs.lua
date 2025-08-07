@@ -72,7 +72,7 @@ local function make_picker(prs, opts, title, on_select)
 					return {
 						value = pr,
 						display = cmd_utils.format_pr_entry(pr),
-						ordinal = pr.title .. " " .. (pr.author or ""),
+						ordinal = cmd_utils.format_pr_entry(pr),
 					}
 				end,
 			}),
