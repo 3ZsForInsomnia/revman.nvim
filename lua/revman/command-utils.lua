@@ -70,6 +70,10 @@ function M.select_status_and_set(pr, status_arg)
 		if status then
 			pr_status.set_review_status(pr.id, status)
 			log.info("PR #" .. pr.number .. " status updated to: " .. status)
+			log.notify("PR #" .. pr.number .. " status updated to: " .. status, {
+				title = "Status Updated",
+				icon = "",
+			})
 		end
 	end
 
