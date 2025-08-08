@@ -38,6 +38,18 @@ vim.api.nvim_create_user_command("RevmanListMergedPRs", function()
 	telescope_prs.pick_prs(prs, nil, "Merged PRs", cmd_utils.default_pr_select_callback)
 end, {})
 
+vim.api.nvim_create_user_command("RevmanListMyOpenPRs", function()
+	local current_user = utils.get_current_user()
+	if not current_user then
+		log.error("Could not determine current user")
+		return
+	end
+	local prs = pr_lists.list_with_status({
+		where = { state = "OPEN", author = current_user },
+	})
+	telescope_prs.pick_prs(prs, nil, "My Open PRs", cmd_utils.default_pr_select_callback)
+end, {})
+
 vim.api.nvim_create_user_command("RevmanListAuthors", function()
 	telescope_authors.pick_authors_with_preview()
 end, {})

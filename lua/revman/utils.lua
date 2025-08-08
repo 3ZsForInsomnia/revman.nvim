@@ -59,6 +59,14 @@ M.get_current_repo = function()
 	return lines[1]:gsub("\n", "")
 end
 
+M.get_current_user = function()
+	local lines = vim.fn.systemlist("gh api user --jq .login")
+	if vim.v.shell_error ~= 0 or #lines == 0 or (lines[1] == "" and #lines == 1) then
+		return nil
+	end
+	return lines[1]:gsub("\n", "")
+end
+
 M.ensure_repo = function(repo_name)
 	local repo_row = db_repos.get_by_name(repo_name)
 	if repo_row then
