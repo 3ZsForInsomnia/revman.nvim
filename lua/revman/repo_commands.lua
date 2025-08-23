@@ -1,15 +1,18 @@
-local github_data = require("revman.github.data")
-local db_repos = require("revman.db.repos")
-local telescope_repos = require("revman.telescope.repos")
-local log = require("revman.log")
-
 local M = {}
 
-vim.api.nvim_create_user_command("RevmanListRepos", function()
-	telescope_repos.pick_repos()
-end, {})
+-- Create real commands (replacing stubs)
+local function create_commands()
+	vim.api.nvim_create_user_command("RevmanListRepos", function()
+	local picker = require("revman.picker")
+	local db_repos = require("revman.db.repos")
+	local repos = db_repos.list()
+	picker.pick_repos(repos, { prompt = "Repositories" })
+	end, {})
 
-vim.api.nvim_create_user_command("RevmanAddRepo", function()
+	vim.api.nvim_create_user_command("RevmanAddRepo", function()
+	local github_data = require("revman.github.data")
+	local db_repos = require("revman.db.repos")
+	local log = require("revman.log")
 	local repo_name = github_data.get_canonical_repo_name()
 	local directory = vim.fn.getcwd()
 	if not repo_name or repo_name == "" then
@@ -32,6 +35,10 @@ vim.api.nvim_create_user_command("RevmanAddRepo", function()
 	else
 		log.error("Failed to add repo: " .. repo_name)
 	end
-end, {})
+	end, {})
+end
+
+-- Auto-create real commands when this module loads
+create_commands()
 
 return M

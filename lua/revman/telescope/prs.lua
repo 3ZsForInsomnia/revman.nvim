@@ -53,12 +53,28 @@ local function pr_previewer(self, entry, status)
 	}
 	vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
 
-	-- Add highlights for better readability
-	vim.api.nvim_buf_add_highlight(self.state.bufnr, -1, "Title", 0, 0, -1)
-	vim.api.nvim_buf_add_highlight(self.state.bufnr, -1, "Identifier", 1, 0, -1)
-	vim.api.nvim_buf_add_highlight(self.state.bufnr, -1, "Comment", 2, 0, -1)
-	vim.api.nvim_buf_add_highlight(self.state.bufnr, -1, "Special", 4, 0, -1)
-	vim.api.nvim_buf_add_highlight(self.state.bufnr, -1, "WarningMsg", 5, 0, -1)
+	-- Add highlights for better readability using extmarks
+	local ns_id = vim.api.nvim_create_namespace("revman_telescope_pr_preview")
+	vim.api.nvim_buf_set_extmark(self.state.bufnr, ns_id, 0, 0, {
+		end_line = 0,
+		hl_group = "Title",
+	})
+	vim.api.nvim_buf_set_extmark(self.state.bufnr, ns_id, 1, 0, {
+		end_line = 1,
+		hl_group = "Identifier",
+	})
+	vim.api.nvim_buf_set_extmark(self.state.bufnr, ns_id, 2, 0, {
+		end_line = 2,
+		hl_group = "Comment",
+	})
+	vim.api.nvim_buf_set_extmark(self.state.bufnr, ns_id, 4, 0, {
+		end_line = 4,
+		hl_group = "Special",
+	})
+	vim.api.nvim_buf_set_extmark(self.state.bufnr, ns_id, 5, 0, {
+		end_line = 5,
+		hl_group = "WarningMsg",
+	})
 end
 
 local function make_picker(prs, opts, title, on_select)

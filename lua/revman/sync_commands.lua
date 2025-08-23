@@ -1,19 +1,21 @@
-local workflows = require("revman.workflows")
-local sync = require("revman.sync")
-local log = require("revman.log")
-local cmd_utils = require("revman.command-utils")
-
 local M = {}
 
-vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()
+-- Create real commands (replacing stubs)
+local function create_commands()
+	vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()
+	local workflows = require("revman.workflows")
+	local log = require("revman.log")
 	workflows.sync_all_prs(nil, false, function(success)
 		if not success then
 			log.error("Some PRs failed to sync.")
 		end
 	end)
-end, {})
+	end, {})
 
-vim.api.nvim_create_user_command("RevmanSyncPR", function(opts)
+	vim.api.nvim_create_user_command("RevmanSyncPR", function(opts)
+	local workflows = require("revman.workflows")
+	local log = require("revman.log")
+	local cmd_utils = require("revman.command-utils")
 	local pr_number = tonumber(opts.args)
 	local sync_fn = function(pr_num)
 		workflows.sync_pr(pr_num, nil, function(pr_id, err)
@@ -35,18 +37,26 @@ vim.api.nvim_create_user_command("RevmanSyncPR", function(opts)
 	else
 		sync_fn(pr_number)
 	end
-end, { nargs = 1 })
+	end, { nargs = 1 })
 
-vim.api.nvim_create_user_command("RevmanEnableBackgroundSync", function()
+	vim.api.nvim_create_user_command("RevmanEnableBackgroundSync", function()
+	local sync = require("revman.sync")
+	local log = require("revman.log")
 	sync.enable_background_sync()
 	log.info("Background sync enabled.")
 	log.notify("Background sync enabled.")
-end, {})
+	end, {})
 
-vim.api.nvim_create_user_command("RevmanDisableBackgroundSync", function()
+	vim.api.nvim_create_user_command("RevmanDisableBackgroundSync", function()
+	local sync = require("revman.sync")
+	local log = require("revman.log")
 	sync.disable_background_sync()
 	log.info("Background sync disabled.")
 	log.notify("Background sync disabled.")
-end, {})
+	end, {})
+end
+
+-- Auto-create real commands when this module loads
+create_commands()
 
 return M
