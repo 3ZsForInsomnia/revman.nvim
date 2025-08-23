@@ -94,7 +94,6 @@ function M.disable_background_sync()
 		sync_timer:stop()
 		sync_timer:close()
 		sync_timer = nil
-		log.notify("Background sync disabled.")
 	end
 end
 

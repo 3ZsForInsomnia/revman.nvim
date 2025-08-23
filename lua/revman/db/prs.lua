@@ -28,6 +28,9 @@ function M.add(pr)
 			if inserted_pr and inserted_pr.id then
 				status.add_status_transition(inserted_pr.id, nil, inserted_pr.review_status_id)
 			end
+
+			log.info("Added PR #" .. pr.number .. " to local database.")
+			log.notify("Added PR #" .. pr.number .. " to local database.")
 		end
 	end)
 end

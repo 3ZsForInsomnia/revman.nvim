@@ -143,8 +143,6 @@ vim.api.nvim_create_user_command("RevmanAddPR", function(opts)
 		pr_db_row.repo_id = repo_row.id
 		pr_db_row.last_synced = os.date("!%Y-%m-%dT%H:%M:%SZ")
 		db_prs.add(pr_db_row)
-		log.info("Added PR #" .. pr_number .. " to local database.")
-		log.notify("Added PR #" .. pr_number .. " to local database.")
 	end)
 end, { nargs = 1 })
 
