@@ -7,9 +7,9 @@ local M = {}
 local function create_snacks_commands()
 	-- Only create if snacks is configured and available
 	local config = require("revman.config")
-	local picker_config = config.get().picker or {}
+	local picker_backend = config.get().picker or "vimSelect"
 	
-	if picker_config.backend ~= "snacks" then
+	if picker_backend ~= "snacks" then
 		return
 	end
 	
@@ -64,11 +64,10 @@ local function create_snacks_commands()
 	log.info("Snacks Revman commands created successfully")
 end
 
--- Function to check if snacks commands should be loaded
 function M.should_load()
 	local config = require("revman.config")
-	local picker_config = config.get().picker or {}
-	return picker_config.backend == "snacks"
+	local picker_backend = config.get().picker or "vimSelect"
+	return picker_backend == "snacks"
 end
 
 -- Function to load snacks commands - call this from setup when appropriate

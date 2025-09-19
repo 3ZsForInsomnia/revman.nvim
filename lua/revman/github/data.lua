@@ -134,10 +134,12 @@ function M.convert_pr_to_db(pr, repo_id)
 		return nil
 	end
 
+	local ci = require("revman.github.ci")
+
 	-- Extract CI status if available
 	local ci_status = nil
-	if pr.statusCheckRollup and pr.statusCheckRollup.state then
-		ci_status = pr.statusCheckRollup.state
+	if pr.statusCheckRollup and type(pr.statusCheckRollup) == "table" then
+		ci_status = ci.extract_ci_status(pr.statusCheckRollup)
 	end
 
 	return {

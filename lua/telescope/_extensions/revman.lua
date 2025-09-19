@@ -1,18 +1,3 @@
--- Telescope extension for revman.nvim
--- This gets loaded when telescope backend is configured and available
-for author, stats in pairs(author_stats) do
-	stats.author = author -- ensure author field is present for display
-	table.insert(authors, stats)
-end
-
-local picker_opts = {
-	prompt = "PR Notes",
-	telescope_opts = opts,
-	force_telescope = true,
-}
-picker.pick_notes(prs_with_notes, picker_opts, function(pr)
-	note_utils.open_note_for_pr(pr)
-end)
 local has_telescope, telescope = pcall(require, "telescope")
 if not has_telescope then
 	-- Don't error, just return empty module since this might be loaded

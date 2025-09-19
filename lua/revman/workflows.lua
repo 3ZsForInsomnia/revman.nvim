@@ -126,6 +126,11 @@ function M.sync_pr(pr_number, repo_name, callback)
 			end
 		end
 
+		-- Extract CI status before upserting to ensure it gets saved
+		if pr_data.statusCheckRollup and type(pr_data.statusCheckRollup) == "table" then
+			pr_db_row.ci_status = ci.extract_ci_status(pr_data.statusCheckRollup)
+		end
+
 		local pr_id = logic_prs.upsert_pr(db_prs, db_repos, pr_db_row)
 
 		local history = status.get_status_history(pr_id)
@@ -134,10 +139,6 @@ function M.sync_pr(pr_number, repo_name, callback)
 		end
 
 		pr_status.maybe_transition_status(pr_id, old_status, new_status)
-
-		if pr_data.statusCheckRollup and type(pr_data.statusCheckRollup) == "table" then
-			pr_db_row.ci_status = ci.extract_ci_status(pr_data.statusCheckRollup)
-		end
 
 		github_data.get_comments_async(pr_number, repo_name, function(comments)
 			local formatted_comments = {}
