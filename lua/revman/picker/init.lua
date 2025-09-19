@@ -2,13 +2,12 @@ local entry_utils = require("revman.picker.entry")
 
 local M = {}
 
--- Check if telescope is available and configured
 local function should_use_telescope()
 	local config = require("revman.config")
-	local picker_config = config.get().picker or {}
+	local picker_backend = config.get().picker or "vimSelect"
 	
 	-- Only use telescope if explicitly configured
-	if picker_config.backend ~= "telescope" then
+	if picker_backend ~= "telescope" then
 		return false
 	end
 	
@@ -16,6 +15,26 @@ local function should_use_telescope()
 	if not ok then
 		local log = require("revman.log")
 		log.warn("Picker backend set to 'telescope' but telescope.nvim is not available. Falling back to vimSelect.")
+		return false
+	end
+	
+	return true
+end
+
+-- Check if snacks picker is available and configured
+local function should_use_snacks()
+	local config = require("revman.config")
+	local picker_backend = config.get().picker or "vimSelect"
+	
+	-- Only use snacks if explicitly configured
+	if picker_backend ~= "snacks" then
+		return false
+	end
+	
+	local ok, snacks = pcall(require, "snacks")
+	if not ok or not snacks.picker then
+		local log = require("revman.log")
+		log.warn("Picker backend set to 'snacks' but snacks.nvim picker is not available. Falling back to vimSelect.")
 		return false
 	end
 	
@@ -111,14 +130,19 @@ local function telescope_pick(items, opts, on_choice)
 	pickers.new(picker_opts.telescope_opts or {}, picker_opts):find()
 end
 
--- Main picker function that chooses between telescope and vim.ui.select
 function M.pick(items, opts, on_choice)
 	opts = opts or {}
 	
-	-- Force telescope if explicitly requested, otherwise use config
-	local use_telescope = opts.force_telescope or (should_use_telescope() and not opts.force_vim_select)
+	-- Force specific backend if explicitly requested, otherwise use config
+	local use_snacks = opts.force_snacks or (should_use_snacks() and not opts.force_telescope and not opts.force_vim_select)
+	local use_telescope = opts.force_telescope or (should_use_telescope() and not opts.force_snacks and not opts.force_vim_select)
 	
-	if use_telescope then
+	if use_snacks then
+		-- Use snacks picker - delegate to specialized functions since snacks has different API
+		local log = require("revman.log")
+		log.warn("Direct snacks picker usage not implemented. Use snacks-specific picker functions instead.")
+		enhanced_select(items, opts, on_choice)
+	elseif use_telescope then
 		telescope_pick(items, opts, on_choice)
 	else
 		enhanced_select(items, opts, on_choice)
@@ -130,17 +154,81 @@ end
 function M.pick_prs(prs, opts, on_choice)
 	opts = opts or {}
 	opts.prompt = opts.prompt or "Select PR"
-	opts.entry_maker = function(pr)
-		return {
-			value = pr,
-			display = entry_utils.pr_display(pr),
-			ordinal = entry_utils.pr_searchable(pr),
-		}
-	end
 	
-	-- Add PR-specific telescope options
-	local use_telescope = opts.force_telescope or should_use_telescope()
-	if use_telescope then
+	-- Force specific backend if explicitly requested, otherwise use config
+	local use_snacks = opts.force_snacks or (should_use_snacks() and not opts.force_telescope and not opts.force_vim_select)
+	local use_telescope = opts.force_telescope or (should_use_telescope() and not opts.force_snacks and not opts.force_vim_select)
+	
+	if use_snacks then
+		-- Use snacks picker implementation
+		local snacks_picker = require("revman.snacks")
+		if opts.prompt == "All PRs" then
+			snacks_picker.prs(opts)
+		elseif opts.prompt == "Open PRs" then
+			snacks_picker.open_prs(opts)
+		elseif opts.prompt == "PRs Needing Review" then
+			snacks_picker.prs_needing_review(opts)
+		elseif opts.prompt == "Merged PRs" then
+			snacks_picker.merged_prs(opts)
+		elseif opts.prompt == "My Open PRs" then
+			snacks_picker.my_open_prs(opts)
+		elseif opts.prompt == "PRs Needing a Nudge" then
+			snacks_picker.nudge_prs(opts)
+		else
+			-- Generic PR picker for snacks
+			local items = {}
+			for _, pr in ipairs(prs) do
+				table.insert(items, vim.tbl_extend("force", pr, {
+					text = entry_utils.pr_searchable(pr)
+				}))
+			end
+			
+			local snacks = require("snacks")
+			snacks.picker.pick({
+				source = "revman_prs_generic",
+				items = items,
+				format = function(item, picker)
+					local pr = item
+					local status_icon = ""
+					if pr.state == "MERGED" then
+						status_icon = "✓ "
+					elseif pr.state == "CLOSED" then
+						status_icon = "✗ "
+					elseif pr.is_draft and pr.is_draft == 1 then
+						status_icon = "📝 "
+					end
+					
+					local review_status = pr.review_status and (" [" .. pr.review_status .. "]") or ""
+					
+					return {
+						{ string.format("%s#%s", status_icon, pr.number), "Number" },
+						{ " " },
+						{ pr.title or "No title", "Title" },
+						{ review_status, "Comment" },
+						{ " (" },
+						{ pr.author or "unknown", "Identifier" },
+						{ ")" },
+					}
+				end,
+				title = opts.prompt,
+				confirm = function(picker, item)
+					picker:close()
+					if item and on_choice then
+						on_choice(item)
+					end
+				end,
+			})
+		end
+		return
+	elseif use_telescope then
+		opts.entry_maker = function(pr)
+			return {
+				value = pr,
+				display = entry_utils.pr_display(pr),
+				ordinal = entry_utils.pr_searchable(pr),
+			}
+		end
+		
 		local previewers = require("telescope.previewers")
 		local ci = require("revman.github.ci")
 		
@@ -242,6 +330,14 @@ function M.pick_prs(prs, opts, on_choice)
 			
 			return true
 		end
+	else
+		opts.entry_maker = function(pr)
+			return {
+				value = pr,
+				display = entry_utils.pr_display(pr),
+				ordinal = entry_utils.pr_searchable(pr),
+			}
+		end
 	end
 	
 	M.pick(prs, opts, on_choice)
@@ -250,17 +346,25 @@ end
 function M.pick_authors(authors, opts, on_choice)
 	opts = opts or {}
 	opts.prompt = opts.prompt or "Select Author"
-	opts.entry_maker = function(author)
-		return {
-			value = author,
-			display = entry_utils.author_display(author),
-			ordinal = entry_utils.author_searchable(author),
-		}
-	end
 	
-	-- Add author-specific telescope preview
-	local use_telescope = opts.force_telescope or should_use_telescope()
-	if use_telescope then
+	-- Force specific backend if explicitly requested, otherwise use config
+	local use_snacks = opts.force_snacks or (should_use_snacks() and not opts.force_telescope and not opts.force_vim_select)
+	local use_telescope = opts.force_telescope or (should_use_telescope() and not opts.force_snacks and not opts.force_vim_select)
+	
+	if use_snacks then
+		-- Use snacks picker implementation
+		local snacks_picker = require("revman.snacks")
+		snacks_picker.authors(opts)
+		return
+	elseif use_telescope then
+		opts.entry_maker = function(author)
+			return {
+				value = author,
+				display = entry_utils.author_display(author),
+				ordinal = entry_utils.author_searchable(author),
+			}
+		end
+		
 		local previewers = require("telescope.previewers")
 		local utils = require("revman.utils")
 		
@@ -307,6 +411,14 @@ function M.pick_authors(authors, opts, on_choice)
 				})
 			end,
 		})
+	else
+		opts.entry_maker = function(author)
+			return {
+				value = author,
+				display = entry_utils.author_display(author),
+				ordinal = entry_utils.author_searchable(author),
+			}
+		end
 	end
 	
 	M.pick(authors, opts, on_choice)
@@ -315,12 +427,24 @@ end
 function M.pick_repos(repos, opts, on_choice)
 	opts = opts or {}
 	opts.prompt = opts.prompt or "Select Repository"
-	opts.entry_maker = function(repo)
-		return {
-			value = repo,
-			display = entry_utils.repo_display(repo),
-			ordinal = entry_utils.repo_searchable(repo),
-		}
+	
+	-- Force specific backend if explicitly requested, otherwise use config
+	local use_snacks = opts.force_snacks or (should_use_snacks() and not opts.force_telescope and not opts.force_vim_select)
+	local use_telescope = opts.force_telescope or (should_use_telescope() and not opts.force_snacks and not opts.force_vim_select)
+	
+	if use_snacks then
+		-- Use snacks picker implementation
+		local snacks_picker = require("revman.snacks")
+		snacks_picker.repos(opts)
+		return
+	else
+		opts.entry_maker = function(repo)
+			return {
+				value = repo,
+				display = entry_utils.repo_display(repo),
+				ordinal = entry_utils.repo_searchable(repo),
+			}
+		end
 	end
 	
 	M.pick(repos, opts, on_choice)
@@ -329,17 +453,25 @@ end
 function M.pick_notes(prs_with_notes, opts, on_choice) 
 	opts = opts or {}
 	opts.prompt = opts.prompt or "Select PR Note"
-	opts.entry_maker = function(pr)
-		return {
-			value = pr,
-			display = entry_utils.note_display(pr),
-			ordinal = entry_utils.note_searchable(pr),
-		}
-	end
 	
-	-- Add note-specific telescope preview
-	local use_telescope = opts.force_telescope or should_use_telescope()
-	if use_telescope then
+	-- Force specific backend if explicitly requested, otherwise use config
+	local use_snacks = opts.force_snacks or (should_use_snacks() and not opts.force_telescope and not opts.force_vim_select)
+	local use_telescope = opts.force_telescope or (should_use_telescope() and not opts.force_snacks and not opts.force_vim_select)
+	
+	if use_snacks then
+		-- Use snacks picker implementation
+		local snacks_picker = require("revman.snacks")
+		snacks_picker.notes(opts)
+		return
+	elseif use_telescope then
+		opts.entry_maker = function(pr)
+			return {
+				value = pr,
+				display = entry_utils.note_display(pr),
+				ordinal = entry_utils.note_searchable(pr),
+			}
+		end
+		
 		local previewers = require("telescope.previewers")
 		local db_notes = require("revman.db.notes")
 		
@@ -352,6 +484,14 @@ function M.pick_notes(prs_with_notes, opts, on_choice)
 				vim.bo[self.state.bufnr].filetype = "markdown"
 			end,
 		})
+	else
+		opts.entry_maker = function(pr)
+			return {
+				value = pr,
+				display = entry_utils.note_display(pr),
+				ordinal = entry_utils.note_searchable(pr),
+			}
+		end
 	end
 	
 	M.pick(prs_with_notes, opts, on_choice)

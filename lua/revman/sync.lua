@@ -56,7 +56,7 @@ end
 function M.enable_background_sync()
 	M.disable_background_sync() -- Ensure no duplicate timers
 
-	local freq = config.get().background.frequency or 15
+	local freq = config.get().background_sync_frequency or 15
 	if freq == 0 then
 		log.info("Background sync is disabled by config.")
 		return
@@ -115,7 +115,7 @@ function M.setup_autosync()
 		return
 	end
 
-	local freq = config.get().background.frequency or 15
+	local freq = config.get().background_sync_frequency or 15
 	if freq > 0 then
 		M.enable_background_sync()
 	end

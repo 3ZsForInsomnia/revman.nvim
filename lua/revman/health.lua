@@ -16,7 +16,7 @@ local function check_db_schema()
 		vim.health.error("Could not load revman.db.schema: " .. tostring(db_schema))
 		return
 	end
-	local db_path = config.get().database.path
+	local db_path = config.get().database_path
 	local stat = vim.loop.fs_stat(db_path)
 	if not (stat and stat.type == "file") then
 		-- Try to create the DB/schema
@@ -71,12 +71,12 @@ local function check_octonvim()
 end
 
 local function check_telescope()
-	local picker_config = config.get().picker or {}
-	local backend = picker_config.backend or "vimSelect"
+	local backend = config.get().picker or "vimSelect"
 
 	vim.health.info("Picker backend configured: " .. backend)
 
 	local has_telescope, telescope = pcall(require, "telescope")
+	local has_snacks, snacks = pcall(require, "snacks")
 
 	if backend == "telescope" then
 		if has_telescope then
@@ -96,16 +96,36 @@ local function check_telescope()
 			end
 		else
 			vim.health.error("Picker backend set to 'telescope' but telescope.nvim is not available")
-			vim.health.info("Either install telescope.nvim or change picker.backend to 'vimSelect'")
+			vim.health.info("Either install telescope.nvim or change picker to 'vimSelect'")
+		end
+	elseif backend == "snacks" then
+		if has_snacks and snacks.picker then
+			vim.health.ok("Snacks backend configured and snacks.nvim picker is available")
+			
+			-- Check if sources are registered
+			local has_sources = snacks.picker.sources and snacks.picker.sources.revman_prs ~= nil
+			if has_sources then
+				vim.health.ok("Revman snacks sources registered - Snacks.revman.<command> available")
+			else
+				vim.health.info(
+					"Revman snacks sources not registered - call require('revman.snacks.sources').setup() to enable"
+				)
+			end
+		else
+			vim.health.error("Picker backend set to 'snacks' but snacks.nvim picker is not available")
+			vim.health.info("Either install snacks.nvim with picker enabled or change picker to 'vimSelect'")
 		end
 	elseif backend == "vimSelect" then
 		vim.health.ok("Using vim.ui.select picker backend")
 		if has_telescope then
-			vim.health.info("Telescope.nvim is available - set picker.backend = 'telescope' to use enhanced UI")
+			vim.health.info("Telescope.nvim is available - set picker = 'telescope' to use enhanced UI")
+		end
+		if has_snacks and snacks.picker then
+			vim.health.info("Snacks.nvim picker is available - set picker = 'snacks' to use enhanced UI")
 		end
 	else
 		vim.health.error("Invalid picker backend: " .. tostring(backend))
-		vim.health.info("Valid options: 'vimSelect', 'telescope'")
+		vim.health.info("Valid options: 'vimSelect', 'telescope', 'snacks'")
 	end
 end
 
@@ -118,6 +138,14 @@ local function check_module_loading()
 		{ name = "revman.picker", desc = "Picker system" },
 		{ name = "revman.workflows", desc = "Core workflows" },
 	}
+	
+	-- Add snacks modules if snacks backend is configured
+	local picker_backend = config.get().picker or "vimSelect"
+	if picker_backend == "snacks" then
+		table.insert(modules_to_test, { name = "revman.snacks", desc = "Snacks picker integration" })
+		table.insert(modules_to_test, { name = "revman.snacks.commands", desc = "Snacks commands" })
+		table.insert(modules_to_test, { name = "revman.snacks.sources", desc = "Snacks sources registration" })
+	end
 	
 	local failed_modules = {}
 	for _, mod in ipairs(modules_to_test) do

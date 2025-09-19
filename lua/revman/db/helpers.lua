@@ -9,7 +9,7 @@ end
 local M = {}
 
 function M.get_db()
-	local db_path = config.get().database.path
+	local db_path = config.get().database_path
 	return sqlite:open(db_path)
 end
 

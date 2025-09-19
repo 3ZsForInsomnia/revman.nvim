@@ -4,7 +4,7 @@ local log = require("revman.log")
 local M = {}
 
 M.ensure_schema = function()
-	local db_path = config.get().database.path
+	local db_path = config.get().database_path
 	log.info("Using database file: " .. db_path)
 
 	local db_dir = db_path:match("(.+)/[^/]+$")

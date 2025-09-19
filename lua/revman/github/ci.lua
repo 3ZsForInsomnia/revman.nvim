@@ -1,10 +1,35 @@
 local M = {}
 
 function M.extract_ci_status(status_data)
-	if not status_data or not status_data.statusCheckRollup then
+	-- Debug logging to understand the data structure
+	local log = require("revman.log")
+	log.info("CI status data type: " .. type(status_data))
+	if type(status_data) == "table" then
+		log.info("CI status data keys: " .. vim.inspect(vim.tbl_keys(status_data)))
+		if status_data[1] then
+			log.info("First item: " .. vim.inspect(status_data[1]))
+		end
+	end
+	
+	if not status_data then
 		return nil
 	end
-	local checks = status_data.statusCheckRollup
+	
+	-- Handle both direct statusCheckRollup data and wrapped PR data
+	local checks
+	if status_data.statusCheckRollup then
+		checks = status_data.statusCheckRollup
+	elseif type(status_data) == "table" and status_data[1] then
+		-- statusCheckRollup is an array
+		checks = status_data
+	else
+		return nil
+	end
+	
+	if not checks or type(checks) ~= "table" then
+		return nil
+	end
+	
 	local total = #checks
 	local passing, failing, pending, skipped = 0, 0, 0, 0
 

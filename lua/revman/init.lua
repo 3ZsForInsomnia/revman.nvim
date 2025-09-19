@@ -23,11 +23,18 @@ function M.setup(user_opts)
 	end)
 end
 
--- Function to load all commands - call this from lazy.nvim config when needed
 function M.load_commands()
 	require("revman.commands")
 	require("revman.sync_commands") 
 	require("revman.repo_commands")
+	
+	-- Load backend-specific commands
+	local config = require("revman.config")
+	local picker_backend = config.get().picker or "vimSelect"
+	
+	if picker_backend == "snacks" then
+		require("revman.snacks.commands").load_commands()
+	end
 end
 
 	-- DO NOT UNCOMMENT THESE UNLESS you have a very good reason

@@ -1,9 +1,9 @@
 *revman.txt*    Plugin for managing GitHub PR reviews in Neovim
 
 ==============================================================================
-REVMan.nvim - GitHub Pull Request Review Manager                *revman*
+RevMan.nvim - GitHub Pull Request Review Manager                *revman*
 
-REVMan.nvim is a Neovim plugin to help you track, review, and manage GitHub pull requests across multiple repositories, all from inside Neovim.
+RevMan.nvim is a Neovim plugin to help you track, review, and manage GitHub pull requests across multiple repositories, all from inside Neovim.
 
 ------------------------------------------------------------------------------
 Features                                                        *revman-features*

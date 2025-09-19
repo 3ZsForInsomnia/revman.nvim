@@ -136,7 +136,7 @@ function M.sync_pr(pr_number, repo_name, callback)
 		pr_status.maybe_transition_status(pr_id, old_status, new_status)
 
 		if pr_data.statusCheckRollup and type(pr_data.statusCheckRollup) == "table" then
-			pr_db_row.ci_status = ci.extract_ci_status(pr_data)
+			pr_db_row.ci_status = ci.extract_ci_status(pr_data.statusCheckRollup)
 		end
 
 		github_data.get_comments_async(pr_number, repo_name, function(comments)

@@ -1,0 +1,678 @@
+-- Snacks picker integration for revman.nvim
+-- This gets loaded when snacks backend is configured and available
+
+local M = {}
+
+-- Setup custom highlight groups for enhanced visuals
+local function setup_highlights()
+  -- Define custom highlight groups with better colors
+  vim.api.nvim_set_hl(0, "RevmanPROpen", { fg = "#3b82f6", bold = true }) -- Blue
+  vim.api.nvim_set_hl(0, "RevmanPRMerged", { fg = "#10b981", bold = true }) -- Green  
+  vim.api.nvim_set_hl(0, "RevmanPRClosed", { fg = "#ef4444", bold = true }) -- Red
+  vim.api.nvim_set_hl(0, "RevmanPRDraft", { fg = "#f59e0b", bold = true }) -- Orange
+  vim.api.nvim_set_hl(0, "RevmanAuthorActive", { fg = "#ef4444", bold = true }) -- Red for very active
+  vim.api.nvim_set_hl(0, "RevmanAuthorMedium", { fg = "#f59e0b", bold = true }) -- Orange for active
+  vim.api.nvim_set_hl(0, "RevmanAuthorLow", { fg = "#3b82f6", bold = true }) -- Blue for contributor
+  vim.api.nvim_set_hl(0, "RevmanIcon", { fg = "#8b5cf6", bold = true }) -- Purple for icons
+end
+
+-- Call setup when module loads (only once)
+local highlights_setup = false
+local function ensure_highlights()
+  if not highlights_setup then
+    setup_highlights()
+    highlights_setup = true
+  end
+end
+
+  local ci = require("revman.github.ci")
+  local ci_status = pr.ci_status or "unknown"
+  local ci_icon = ci.get_status_icon({ status = ci_status })
+  
+  -- Enhanced preview with icons and colors
+  local state_icon = ""
+  if pr.state == "MERGED" then
+    state_icon = " "
+  elseif pr.state == "CLOSED" then
+    state_icon = " "
+  elseif pr.is_draft and pr.is_draft == 1 then
+    state_icon = "󰧮 "
+  else
+    state_icon = " "
+  end
+  
+  local review_icon = " "
+  if pr.review_status == "approved" then
+    review_icon = " "
+  elseif pr.review_status == "changes_requested" then
+    review_icon = " "
+  elseif pr.review_status == "waiting_for_review" then
+    review_icon = " "
+  elseif pr.review_status == "needs_nudge" then
+    review_icon = "󰂚 "
+  end
+  
+  local preview_text = string.format([[📋 PR #%s: %s
+👤 Author: %s
+%s State: %s
+
+%s Review Status: %s
+🚀 CI Status: %s %s
+
+📅 Created: %s
+⏰ Last Activity: %s
+💬 Comment Count: %s
+
+🔗 URL: %s]], pr.number, pr.title, pr.author or "unknown", 
+    state_icon, pr.state,
+    review_icon,
+    pr.review_status or "N/A", ci_icon, ci_status,
+    pr.created_at, pr.last_activity or "Unknown", pr.comment_count or "0",
+    pr.url)
+  
+  local entry_utils = require("revman.picker.entry")
+  return vim.tbl_extend("force", pr, {
+    text = entry_utils.pr_searchable(pr),
+    preview = {
+      text = preview_text,
+      ft = "text"
+    }
+  })
+end
+
+-- Check if snacks picker is available
+local function has_snacks()
+  local ok, snacks = pcall(require, "snacks")
+  if not ok then
+    return false
+  end
+  return snacks.picker ~= nil
+end
+
+-- Helper to create snacks picker sources
+local function create_source_config(source_name, items, format_fn, preview_fn, on_confirm)
+  return {
+    source = source_name,
+    items = items,
+    format = format_fn,
+    preview = preview_fn,
+    confirm = on_confirm,
+    layout = {
+      preset = "default",
+      preview = true,
+    },
+    win = {
+      preview = { minimal = true },
+    },
+  }
+end
+local function format_pr(item, picker)
+  ensure_highlights()
+  
+  local pr = item
+  local status_icon = ""
+  local status_hl = "RevmanIcon"
+  
+  if pr.state == "MERGED" then
+    status_icon = " "
+    status_hl = "RevmanPRMerged"
+  elseif pr.state == "CLOSED" then
+    status_icon = " "
+    status_hl = "RevmanPRClosed"
+  elseif pr.is_draft and pr.is_draft == 1 then
+    status_icon = "󰧮 "
+    status_hl = "RevmanPRDraft"
+  else
+    -- Open PR
+    status_icon = " "
+    status_hl = "RevmanPROpen"
+  end
+  
+  -- Enhanced review status with icons
+  local review_status = ""
+  local review_hl = "RevmanIcon"
+  if pr.review_status then
+    local review_icon = ""
+    if pr.review_status == "approved" then
+      review_icon = " "
+      review_hl = "RevmanPRMerged"
+    elseif pr.review_status == "changes_requested" then
+      review_icon = " "
+      review_hl = "RevmanPRClosed"
+    elseif pr.review_status == "waiting_for_review" then
+      review_icon = " "
+      review_hl = "RevmanPRDraft"
+    elseif pr.review_status == "needs_nudge" then
+      review_icon = "󰂚 "
+      review_hl = "RevmanIcon"
+    else
+      review_icon = " "
+    end
+    review_status = " " .. review_icon .. pr.review_status
+  end
+  
+  return {
+    { status_icon, status_hl },
+    { string.format("#%s", pr.number), "Number" },
+    { " " },
+    { pr.title or "No title", "String" },
+    { review_status, review_hl },
+    { "  " },
+    { pr.author or "unknown", "Identifier" },
+  }
+end
+local function format_author(item, picker)
+  ensure_highlights()
+  
+  local author_stats = item
+  local opened = author_stats.prs_opened or 0
+  local merged = author_stats.prs_merged or 0
+  local comments = author_stats.comments_written or 0
+  
+  -- Activity level icons and colors
+  local activity_icon = ""
+  local activity_hl = "RevmanIcon"
+  if opened > 20 then
+    activity_icon = " " -- fire for very active
+    activity_hl = "RevmanAuthorActive"
+  elseif opened > 10 then
+    activity_icon = " " -- star for active
+    activity_hl = "RevmanAuthorMedium"
+  elseif opened > 0 then
+    activity_icon = " " -- person for contributor
+    activity_hl = "RevmanAuthorLow"
+  else
+    activity_icon = " " -- ghost for inactive
+    activity_hl = "RevmanIcon"
+  end
+  
+  return {
+    { activity_icon, activity_hl },
+    { " " },
+    { author_stats.author or "unknown", "Identifier" },
+    { "  " },
+    { " ", "RevmanPRMerged" },
+    { tostring(opened), "Number" },
+    { "  " },
+    { " ", "RevmanPROpen" },
+    { tostring(merged), "Number" },
+    { "  " },
+    { "󰭻 ", "RevmanIcon" },
+    { tostring(comments), "Number" },
+  }
+end
+local function format_repo(item, picker)
+  ensure_highlights()
+  
+  local repo = item
+  return {
+    { " ", "RevmanIcon" },
+    { " " },
+    { repo.name or "unknown", "Title" },
+    { "  " },
+    { " ", "RevmanIcon" },
+    { repo.directory or "no directory", "Comment" },
+  }
+end
+local function format_note(item, picker)
+  ensure_highlights()
+  
+  local pr_with_note = item
+  local pr_format = format_pr(pr_with_note, picker)
+  
+  -- Add note icon at the beginning
+  table.insert(pr_format, 1, { " ", "RevmanIcon" })
+  table.insert(pr_format, 2, { " " })
+  
+  local note_preview = ""
+  if pr_with_note.note_content then
+    local preview = pr_with_note.note_content:match("^%s*(.-)[\n\r]") or pr_with_note.note_content
+    if preview and #preview > 0 then
+      preview = preview:sub(1, 60) -- First 60 chars
+      if #pr_with_note.note_content > 60 then
+        preview = preview .. "..."
+      end
+      note_preview = "  " .. preview
+    end
+  end
+  
+  -- Add note preview to the PR format
+  table.insert(pr_format, { note_preview, "String" })
+  return pr_format
+end
+
+-- Main picker functions for snacks
+
+-- List all PRs
+function M.prs(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local pr_lists = require("revman.db.pr_lists")
+  local cmd_utils = require("revman.command-utils")
+  local prs = pr_lists.list_with_status()
+
+  -- Create items with proper text field for searching
+  local items = {}
+  for _, pr in ipairs(prs) do
+    table.insert(items, add_pr_preview(pr))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_prs",
+    items = items,
+    format = format_pr,
+    preview = "preview", -- Use built-in preview that reads item.preview
+    title = " 📋 All PRs",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        cmd_utils.default_pr_select_callback(item)
+      end
+    end,
+    actions = {
+      open_browser = function(picker, item)
+        if item and item.url then
+          local cmd
+          if vim.fn.has("mac") == 1 then
+            cmd = { "open", item.url }
+          elseif vim.fn.has("unix") == 1 then
+            cmd = { "xdg-open", item.url }
+          elseif vim.fn.has("win32") == 1 then
+            cmd = { "start", item.url }
+          end
+          if cmd then
+            vim.fn.jobstart(cmd, { detach = true })
+          end
+        end
+      end,
+      set_status = function(picker, item)
+        if item then
+          local db_status = require("revman.db.status")
+          local pr_status = require("revman.db.pr_status")
+          local log = require("revman.log")
+          local statuses = {}
+          for _, s in ipairs(db_status.list()) do
+            table.insert(statuses, s.name)
+          end
+          vim.ui.select(statuses, { prompt = "Set PR Status" }, function(selected_status)
+            if selected_status then
+              pr_status.set_review_status(item.id, selected_status)
+              log.info("PR #" .. item.number .. " status updated to: " .. selected_status)
+            end
+          end)
+        end
+      end,
+    },
+    win = {
+      input = {
+        keys = {
+          ["<C-b>"] = { "open_browser", mode = { "n", "i" } },
+          ["<C-s>"] = { "set_status", mode = { "n", "i" } },
+        },
+      },
+    },
+  })
+end
+
+-- List open PRs
+function M.open_prs(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local pr_lists = require("revman.db.pr_lists")
+  local cmd_utils = require("revman.command-utils")
+  local prs = pr_lists.list_with_status({ where = { state = "OPEN" } })
+
+  local items = {}
+  for _, pr in ipairs(prs) do
+    table.insert(items, add_pr_preview(pr))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_open_prs",
+    items = items,
+    format = format_pr,
+    preview = "preview",
+    title = " 🔵 Open PRs",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        cmd_utils.default_pr_select_callback(item)
+      end
+    end,
+  })
+end
+
+-- List PRs needing review
+function M.prs_needing_review(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local db_status = require("revman.db.status")
+  local pr_lists = require("revman.db.pr_lists")
+  local cmd_utils = require("revman.command-utils")
+  local status_id = db_status.get_id("waiting_for_review")
+  local prs = pr_lists.list_with_status({ where = { review_status_id = status_id, state = "OPEN" } })
+
+  local items = {}
+  for _, pr in ipairs(prs) do
+    table.insert(items, add_pr_preview(pr))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_prs_needing_review",
+    items = items,
+    format = format_pr,
+    preview = "preview",
+    title = " 👁️ PRs Needing Review",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        cmd_utils.default_pr_select_callback(item)
+      end
+    end,
+  })
+end
+
+-- List merged PRs
+function M.merged_prs(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local pr_lists = require("revman.db.pr_lists")
+  local cmd_utils = require("revman.command-utils")
+  local prs = pr_lists.list_with_status({
+    where = { state = "MERGED" },
+    order_by = { desc = { "last_activity" } },
+  })
+
+  local items = {}
+  for _, pr in ipairs(prs) do
+    table.insert(items, add_pr_preview(pr))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_merged_prs",
+    items = items,
+    format = format_pr,
+    preview = "preview",
+    title = " ✅ Merged PRs",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        cmd_utils.default_pr_select_callback(item)
+      end
+    end,
+  })
+end
+
+-- List current user's open PRs
+function M.my_open_prs(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local utils = require("revman.utils")
+  local pr_lists = require("revman.db.pr_lists")
+  local cmd_utils = require("revman.command-utils")
+  local log = require("revman.log")
+  local current_user = utils.get_current_user()
+  if not current_user then
+    log.error("Could not determine current user")
+    return
+  end
+  local prs = pr_lists.list_with_status({
+    where = { state = "OPEN", author = current_user },
+  })
+
+  local items = {}
+  for _, pr in ipairs(prs) do
+    table.insert(items, add_pr_preview(pr))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_my_open_prs",
+    items = items,
+    format = format_pr,
+    preview = "preview",
+    title = " 👤 My Open PRs",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        cmd_utils.default_pr_select_callback(item)
+      end
+    end,
+  })
+end
+
+-- List PRs needing a nudge
+function M.nudge_prs(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local db_status = require("revman.db.status")
+  local pr_lists = require("revman.db.pr_lists")
+  local cmd_utils = require("revman.command-utils")
+  local log = require("revman.log")
+  local status_id = db_status.get_id("needs_nudge")
+  local prs = pr_lists.list_with_status({ where = { review_status_id = status_id } })
+  if #prs == 0 then
+    log.notify("No PRs need a nudge!", "info")
+    log.info("No PRs need a nudge")
+    return
+  end
+
+  local items = {}
+  for _, pr in ipairs(prs) do
+    table.insert(items, add_pr_preview(pr))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_nudge_prs",
+    items = items,
+    format = format_pr,
+    preview = "preview",
+    title = " 🔔 PRs Needing a Nudge",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        cmd_utils.default_pr_select_callback(item)
+      end
+    end,
+  })
+end
+
+-- List authors with analytics
+function M.authors(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local author_analytics = require("revman.analytics.authors")
+  local author_stats = author_analytics.get_author_analytics()
+  local authors = {}
+  
+  for author, stats in pairs(author_stats) do
+    stats.author = author -- ensure author field is present for display
+    table.insert(authors, stats)
+  end
+
+  local items = {}
+  for _, author in ipairs(authors) do
+    local entry_utils = require("revman.picker.entry")
+    
+    local preview_text = string.format([[👤 User: %s
+
+ PRs opened: %s
+ PRs merged: %s
+ PRs closed w/o merge: %s
+
+📈 PRs opened/week (avg): %.2f
+📈 PRs merged/week (avg): %.2f
+
+💬 Comments written: %s
+  📝 On own PRs: %s
+  👥 On others' PRs: %s
+📨 Comments received: %s
+
+⏱️ Avg time to first comment: %s
+🔄 Avg review cycles (heuristic): %.2f]],
+      author.author or "unknown",
+      author.prs_opened or 0,
+      author.prs_merged or 0,
+      author.prs_closed_without_merge or 0,
+      author.prs_opened_per_week_avg or 0,
+      author.prs_merged_per_week_avg or 0,
+      author.comments_written or 0,
+      author.comments_on_own_prs or 0,
+      author.comments_on_others_prs or 0,
+      author.comments_received or 0,
+      author.avg_time_to_first_comment_human or "N/A",
+      author.avg_review_cycles or 0)
+    
+    table.insert(items, vim.tbl_extend("force", author, {
+      text = entry_utils.author_searchable(author),
+      preview = {
+        text = preview_text,
+        ft = "text"
+      }
+    }))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_authors",
+    items = items,
+    format = format_author,
+    preview = "preview",
+    title = " 📊 PR Authors (Analytics)",
+    confirm = function(picker, item)
+      picker:close()
+      -- No default action for authors - could be extended
+    end,
+  })
+end
+
+-- List repositories
+function M.repos(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local db_repos = require("revman.db.repos")
+  local repos = db_repos.list()
+
+  local items = {}
+  local entry_utils = require("revman.picker.entry")
+  for _, repo in ipairs(repos) do
+    table.insert(items, vim.tbl_extend("force", repo, {
+      text = entry_utils.repo_searchable(repo)
+    }))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_repos",
+    items = items,
+    format = format_repo,
+    preview = "none",
+    title = " 📁 Repositories",
+    confirm = function(picker, item)
+      picker:close()
+      -- No default action for repos - could be extended
+    end,
+  })
+end
+
+-- List PR notes
+function M.notes(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local pr_lists = require("revman.db.pr_lists")
+  local db_notes = require("revman.db.notes")
+  local note_utils = require("revman.note-utils")
+  local prs = pr_lists.list()
+  local prs_with_notes = {}
+  
+  for _, pr in ipairs(prs) do
+    local note = db_notes.get_by_pr_id(pr.id)
+    if note and note.content and note.content ~= "" then
+      pr.note_content = note.content -- Add note content for searching
+      table.insert(prs_with_notes, pr)
+    end
+  end
+
+  local items = {}
+  for _, pr in ipairs(prs_with_notes) do
+    local entry_utils = require("revman.picker.entry")
+    local db_notes = require("revman.db.notes")
+    local note = db_notes.get_by_pr_id(pr.id)
+    local note_content = note and note.content or "No note found."
+    
+    table.insert(items, vim.tbl_extend("force", pr, {
+      text = entry_utils.note_searchable(pr),
+      preview = {
+        text = note_content,
+        ft = "markdown"
+      }
+    }))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    source = "revman_notes",
+    items = items,
+    format = format_note,
+    preview = "preview",
+    title = " 📝 PR Notes",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        note_utils.open_note_for_pr(item)
+      end
+    end,
+  })
+end
+
+return M

@@ -83,7 +83,7 @@ M.ensure_repo = function(repo_name)
 end
 
 M.db_file_exists = function()
-	local db_path = config.get().database.path
+	local db_path = config.get().database_path
 	local stat = vim.loop.fs_stat(db_path)
 
 	return stat and stat.type == "file"

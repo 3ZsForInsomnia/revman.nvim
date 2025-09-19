@@ -2,15 +2,23 @@
 
 ## Recommended Setup
 
+```lua
+require("revman").setup({
+  database_path = vim.fn.stdpath("state") .. "/revman/revman.db",
+  data_retention_days = 30,
+  background_sync_frequency = 15,
+  picker = "telescope",
+  log_level = "warn",
+})
+```
 Use `event = "VeryLazy"` for optimal loading. **Do not** use `cmd = {...}` for lazy loading as it complicates the setup process.
 
 ```lua
 -- lazy.nvim
 {
-  "your-username/revman.nvim",
+  "3ZsForInsomnia/revman.nvim",
   dependencies = {
     "kkharji/sqlite.lua",
-    "nvim-telescope/telescope.nvim", -- Optional but recommended
   },
   event = "VeryLazy",
   config = function()
@@ -26,7 +34,7 @@ Use `event = "VeryLazy"` for optimal loading. **Do not** use `cmd = {...}` for l
     
     -- Load telescope extension if using telescope backend
     local config = require("revman.config").get()
-    if config.picker.backend == "telescope" then
+    if config.picker == "telescope" then
       local has_telescope, telescope = pcall(require, "telescope")
       if has_telescope then
         telescope.load_extension("revman")
@@ -60,17 +68,17 @@ picker = {
 ### Background Sync
 
 ```lua
-background = {
-  frequency = 15, -- minutes between syncs (0 to disable)
-}
-```
+-- Background sync configuration
+background_sync_frequency = 15 -- minutes between syncs (0 to disable)
 
-### Database
+-- Database configuration  
+database_path = vim.fn.stdpath("state") .. "/revman/revman.db"
 
-```lua
-database = {
-  path = vim.fn.stdpath("state") .. "/revman/revman.db",
-}
+-- Data retention configuration
+data_retention_days = 30 -- days to keep PRs (0 = keep forever)
+
+-- Picker backend configuration
+picker = "vimSelect" -- "vimSelect", "telescope", or "snacks"
 ```
 
 ### Logging

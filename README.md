@@ -1,6 +1,6 @@
 # revman.nvim
 
-# **revman.nvim** is a Neovim plugin that streamlines your GitHub pull request review workflow—especially when paired with [Octo.nvim](https://github.com/pwntester/octo.nvim). Its primary purpose is to help you track and manage PRs that are waiting for your review, across multiple repositories, all from inside Neovim.
+**revman.nvim** is a Neovim plugin that streamlines your GitHub pull request review workflow—especially when paired with [Octo.nvim](https://github.com/pwntester/octo.nvim). Its primary purpose is to help you track and manage PRs that are waiting for your review, across multiple repositories, all from inside Neovim.
 
 The core workflow is simple:
 - **Add a PR** to your local database.
@@ -42,19 +42,20 @@ And it also includes features like analytics and advanced filtering - handy extr
 Requirements:
 - Neovim 0.7+
 - [kkharji/sqlite.lua](https://github.com/kkharji/sqlite.lua)
-- [nvim-telescope/telescope.nvim](https://github.com/nvim-telescope/telescope.nvim)
 - [GitHub CLI (`gh`)](https://cli.github.com/) (must be installed and authenticated)
 - [pwntester/octo.nvim](https://github.com/pwntester/octo.nvim) (optional, but required for PR review UI and strongly suggested)
+
+A Picker is strongly recommended. Supported pickers:
+- [Snacks Picker](https://github.com/folke/snacks.nvim/blob/main/docs/picker.md)
+- [nvim-telescope/telescope.nvim](https://github.com/nvim-telescope/telescope.nvim)
 
 Example (Lazy.nvim):
 
 ```lua
 {
-  "yourusername/revman.nvim",
+  "3ZsForInsomnia/revman.nvim",
   dependencies = {
     "kkharji/sqlite.lua",
-    "nvim-telescope/telescope.nvim",
-    -- optional:
     "pwntester/octo.nvim",
   },
   config = true,
@@ -70,15 +71,10 @@ Example:
 
 ```lua
 require("revman").setup({
-  database = {
-    path = vim.fn.stdpath("state") .. "/revman/revman.db",
-  },
-  retention = {
-    days = 30, -- days to keep PRs (0 = keep forever)
-  },
-  background = {
-    frequency = 15, -- minutes between background syncs (0 = disable)
-  },
+  database_path = vim.fn.stdpath("state") .. "/revman/revman.db",
+  data_retention_days = 30, -- days to keep PRs (0 = keep forever)
+  background_sync_frequency = 15, -- minutes between background syncs (0 = disable)
+  picker = "vimSelect", -- "vimSelect", "telescope", or "snacks"
   log_level = "warn", -- "info", "warn", or "error"
 })
 ```

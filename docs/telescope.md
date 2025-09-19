@@ -7,7 +7,7 @@ When Telescope is available, revman.nvim automatically registers a telescope ext
 ```lua
 -- In your lazy.nvim config
 {
-  "your-username/revman.nvim",
+  "3ZsForInsomnia/revman.nvim",
   dependencies = {
     "kkharji/sqlite.lua",
     "nvim-telescope/telescope.nvim", -- Optional but recommended
@@ -22,7 +22,7 @@ When Telescope is available, revman.nvim automatically registers a telescope ext
     
     -- Load telescope extension if using telescope backend
     local config = require("revman.config").get()
-    if config.picker.backend == "telescope" then
+    if config.picker == "telescope" then
       local has_telescope, telescope = pcall(require, "telescope")
       if has_telescope then
         telescope.load_extension("revman")
@@ -53,7 +53,7 @@ The picker backend must be explicitly configured - revman.nvim will not automati
 
 ### Both Command Styles Work
 
-You can use **either** command style regardless of your `picker.backend` setting:
+You can use **either** command style regardless of your `picker` setting:
 
 #### Traditional Commands (always available)
 ```
@@ -122,9 +122,8 @@ Run `:checkhealth revman` to verify:
 - Extension loading status
 
 ### Common Issues
-- **"Picker backend set to 'telescope' but telescope.nvim is not available"**: Install telescope.nvim or change to `picker.backend = "vimSelect"`
-- **Telescope commands not working**: Ensure `telescope.load_extension("revman")` is called after setup
-- **Multiple pickers acting weird**: Set explicit `picker.backend` instead of relying on auto-detection
+- **"Picker backend set to 'telescope' but telescope.nvim is not available"**: Install telescope.nvim or change to `picker = "vimSelect"`
+- **Multiple pickers acting weird**: Set explicit `picker` instead of relying on auto-detection
 
 ## Configuration
 
