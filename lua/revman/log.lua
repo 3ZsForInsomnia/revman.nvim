@@ -14,19 +14,26 @@ end
 
 M.info = function(msg)
 	if should_log("info") then
-		vim.api.nvim_echo({ { messagePrefix .. msg, "None" } }, true, {})
+		vim.schedule(function()
+			vim.api.nvim_echo({ { messagePrefix .. msg, "None" } }, true, {})
+		end)
 	end
 end
 
 M.warn = function(msg)
 	if should_log("warn") then
-		vim.api.nvim_echo({ { messagePrefix .. msg, "WarningMsg" } }, true, {})
+		vim.schedule(function()
+			vim.api.nvim_echo({ { messagePrefix .. msg, "WarningMsg" } }, true, {})
+		end)
+		M.notify(messagePrefix .. msg, vim.log.levels.WARN)
 	end
 end
 
 M.error = function(msg)
 	if should_log("error") then
-		vim.api.nvim_echo({ { messagePrefix .. msg, "ErrorMsg" } }, true, {})
+		vim.schedule(function()
+			vim.api.nvim_echo({ { messagePrefix .. msg, "ErrorMsg" } }, true, {})
+		end)
 		M.notify(messagePrefix .. msg, vim.log.levels.ERROR)
 	end
 end

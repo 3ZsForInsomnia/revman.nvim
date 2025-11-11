@@ -14,6 +14,7 @@ local function check_db_schema()
 	local ok, db_schema = pcall(require, "revman.db.schema")
 	if not ok then
 		vim.health.error("Could not load revman.db.schema: " .. tostring(db_schema))
+		vim.health.info("Run :RevmanRepairDB to attempt database repair")
 		return
 	end
 	local db_path = config.get().database_path
@@ -23,14 +24,32 @@ local function check_db_schema()
 		local ok_schema, err = pcall(db_schema.ensure_schema)
 		if not ok_schema then
 			vim.health.error("Failed to create DB schema: " .. tostring(err))
+			vim.health.info("Run :RevmanRepairDB to attempt database repair")
 			return
 		end
 		stat = vim.loop.fs_stat(db_path)
 	end
 	if stat and stat.type == "file" then
 		vim.health.ok("Database file exists: " .. db_path)
+		
+		-- Test basic database connectivity
+		local helpers = require("revman.db.helpers")
+		local db_accessible = pcall(function()
+			helpers.with_db(function(db)
+				-- Simple test query
+				db:select("sqlite_master", { where = "type='table'" })
+			end)
+		end)
+		
+		if db_accessible then
+			vim.health.ok("Database is accessible and functional")
+		else
+			vim.health.error("Database file exists but is not accessible")
+			vim.health.info("Run :RevmanRepairDB to attempt database repair")
+		end
 	else
 		vim.health.error("Database file does not exist and could not be created: " .. db_path)
+		vim.health.info("Run :RevmanRepairDB to attempt database repair")
 	end
 end
 
@@ -54,6 +73,17 @@ local function check_config()
 	else
 		vim.health.warn("Background sync frequency not set (default will be used)")
 	end
+  
+  -- Check new assignment configuration
+  local auto_add = opts.auto_add_assigned_prs or "smart"
+  vim.health.info("Auto-add assigned PRs: " .. auto_add)
+  
+  local remove_unassigned = opts.remove_unassigned_prs or "smart"
+  vim.health.info("Remove unassigned PRs: " .. remove_unassigned)
+  
+  local avatar_display = opts.avatar_display or "off"
+  vim.health.info("Avatar display: " .. avatar_display)
+  
 	if opts.keymaps and opts.keymaps.save_notes then
 		vim.health.ok("Save notes keymap: " .. opts.keymaps.save_notes)
 	else
@@ -129,6 +159,70 @@ local function check_telescope()
 	end
 end
 
+local function check_migrations()
+	-- Check if users table needs to be populated from existing data
+	local helpers = require("revman.db.helpers")
+	
+	local needs_migration = helpers.with_db(function(db)
+		-- Check if we have PRs but no users (indicating need for migration)
+    local all_prs = db:select("pull_requests", {})
+    local pr_count = all_prs and #all_prs or 0
+		
+    local all_users = db:select("users", {})
+    local user_count = all_users and #all_users or 0
+		
+		return pr_count > 0 and user_count == 0
+	end)
+	
+	if needs_migration then
+		vim.health.warn("Users table needs population from existing PR data")
+		vim.health.info("Run :RevmanRepairDB to repair database and populate missing data")
+	else
+		-- Check if users have profile data
+		local needs_profile_fetch = helpers.with_db(function(db)
+			local users_without_profiles = db:select("users", {
+				select = "COUNT(*) as count",
+				where = "display_name IS NULL OR avatar_url IS NULL"
+			})
+			local count = users_without_profiles and users_without_profiles[1] and users_without_profiles[1].count or 0
+			return count > 0
+		end)
+		
+		if needs_profile_fetch then
+			vim.health.info("Some users missing profile data from GitHub")
+			vim.health.info("User profiles will be fetched automatically during normal sync operations, or run :RevmanRepairDB for full repair")
+		else
+			vim.health.ok("Users table is properly populated with profile data")
+		end
+	end
+end
+
+local function check_assignee_relationships()
+	-- Check if PRs have assignee relationships populated
+	local helpers = require("revman.db.helpers")
+	
+	local needs_assignee_sync = helpers.with_db(function(db)
+		-- Check if we have PRs but no assignee relationships
+    local open_prs = db:select("pull_requests", {
+      where = { state = "OPEN" }
+    })
+    local pr_count = open_prs and #open_prs or 0
+		
+    local all_assignees = db:select("pr_assignees", {})
+    local assignee_count = all_assignees and #all_assignees or 0
+		
+		-- If we have open PRs but no assignee relationships, we probably need to sync
+		return pr_count > 0 and assignee_count == 0
+	end)
+	
+	if needs_assignee_sync then
+		vim.health.warn("PR assignee relationships may need to be populated")
+		vim.health.info("Run :RevmanRepairDB to sync assignee data from GitHub")
+	else
+		vim.health.ok("PR assignee relationships appear to be populated")
+	end
+end
+
 local function check_module_loading()
 	-- Load all modules to test functionality (health check should test features, not lazy loading)
 	local modules_to_test = {
@@ -184,6 +278,8 @@ M.check = function()
 	vim.health.start("revman.nvim")
 	check_sqlite()
 	check_db_schema()
+	check_migrations()
+	check_assignee_relationships()
 	check_gh()
 	check_config()
 	check_telescope()

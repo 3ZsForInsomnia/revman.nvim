@@ -22,6 +22,16 @@ M.ensure_schema = function()
 
 	local stmts = {
 		[[
+		CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY,
+			username TEXT NOT NULL UNIQUE,
+			display_name TEXT,
+			avatar_url TEXT,
+			first_seen TEXT NOT NULL,
+			last_seen TEXT NOT NULL
+		)
+		]],
+		[[
 		CREATE TABLE IF NOT EXISTS repositories (
 			id INTEGER PRIMARY KEY,
 			name TEXT NOT NULL UNIQUE,
@@ -80,6 +90,29 @@ M.ensure_schema = function()
 		)
 		]],
 		[[
+		CREATE TABLE IF NOT EXISTS pr_assignees (
+			id INTEGER PRIMARY KEY,
+			pr_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			UNIQUE(pr_id, user_id),
+			FOREIGN KEY(pr_id) REFERENCES pull_requests(id),
+			FOREIGN KEY(user_id) REFERENCES users(id)
+		)
+		]],
+		[[
+		CREATE TABLE IF NOT EXISTS user_analytics (
+			id INTEGER PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			metric_name TEXT NOT NULL,
+			metric_value TEXT NOT NULL,
+			calculated_at TEXT NOT NULL,
+			period_start TEXT,
+			period_end TEXT,
+			UNIQUE(user_id, metric_name, period_start, period_end),
+			FOREIGN KEY(user_id) REFERENCES users(id)
+		)
+		]],
+		[[
       CREATE TABLE IF NOT EXISTS comments (
         id INTEGER PRIMARY KEY,
         github_id INTEGER UNIQUE,
@@ -112,10 +145,17 @@ M.ensure_schema = function()
 		"merged",
 		"closed",
 		"needs_nudge",
+		"not_tracked",
 	}
-	for _, name in ipairs(statuses) do
-		db:insert("review_status", { name = name })
-	end
+  
+  -- Only insert statuses that don't already exist
+  for _, name in ipairs(statuses) do
+    local existing = db:select("review_status", { where = { name = name } })
+    if not existing or #existing == 0 then
+      db:insert("review_status", { name = name })
+      log.info("Added review status: " .. name)
+    end
+  end
 
 	log.info("Review statuses initialized")
 	db:close()
@@ -125,6 +165,108 @@ M.ensure_schema = function()
 	else
 		log.error("DB file does NOT exist after schema creation: " .. db_path)
 	end
+end
+
+function M.get_db()
+	local helpers = require("revman.db.helpers")
+	return helpers.get_db()
+end
+
+function M.run_migrations(db)
+	-- Migration 1: Populate users table from existing PR authors
+	M.migrate_existing_authors(db)
+end
+
+function M.migrate_existing_authors(db)
+	log.info("Running migration: populate users table from existing authors")
+	
+  -- Check if users table exists by trying to query it
+  local users_table_exists = pcall(function()
+    db:select("users", { limit = 1 })
+  end)
+  
+  if not users_table_exists then
+    log.warn("Users table does not exist, skipping author migration")
+    return
+  end
+  
+  -- Get all unique authors from pull_requests  
+  -- Note: sqlite.lua doesn't support DISTINCT in select, so we'll get all and deduplicate
+  local ok, all_prs = pcall(function()
+    return db:select("pull_requests", {})
+  end)
+  
+  if not ok or not all_prs then
+    log.warn("Could not query pull_requests table, skipping migration")
+    return
+  end
+  
+  -- Deduplicate authors manually
+  local unique_authors = {}
+  for _, row in ipairs(all_prs) do
+    if row.author and row.author ~= "" then
+      unique_authors[row.author] = true
+    end
+  end
+	
+  local author_list = {}
+  for author, _ in pairs(unique_authors) do
+    table.insert(author_list, author)
+  end
+  
+  if #author_list == 0 then
+		log.info("No existing authors found to migrate")
+		return
+	end
+	
+  -- Check if migration already ran by seeing if users already exist
+  local users_ok, existing_users = pcall(function()
+    return db:select("users", {})
+  end)
+  
+  if users_ok and existing_users and #existing_users > 0 then
+    log.info("Users table already populated (" .. #existing_users .. " users), skipping author migration")
+    return
+  end
+  
+	local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
+  local migrated_count = 0
+	
+  for _, username in ipairs(author_list) do
+		if username and username ~= "" then
+			-- Check if user already exists
+      local user_exists = false
+      local check_ok, existing_user = pcall(function()
+        return db:select("users", { where = { username = username } })
+      end)
+			
+      if check_ok and existing_user and #existing_user > 0 then
+        user_exists = true
+      end
+      
+      if not user_exists then
+        -- Insert new user
+        local insert_ok, insert_err = pcall(function()
+          db:insert("users", {
+            username = username,
+            display_name = nil, -- Will be populated by future GitHub fetch
+            avatar_url = nil,   -- Will be populated by future GitHub fetch
+            first_seen = now,
+            last_seen = now
+          })
+        end)
+        
+        if insert_ok then
+          migrated_count = migrated_count + 1
+          log.info("Migrated user: " .. username)
+        else
+          log.warn("Failed to migrate user " .. username .. ": " .. tostring(insert_err))
+        end
+			end
+		end
+	end
+	
+  log.info("Author migration completed: " .. migrated_count .. " users migrated")
 end
 
 return M

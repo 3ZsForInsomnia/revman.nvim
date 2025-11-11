@@ -1,8 +1,15 @@
 local M = {}
 
+local log = require("revman.log")
+
 local get_current_repo = function()
 	local lines = vim.fn.systemlist("gh repo view --json nameWithOwner -q .nameWithOwner")
-	if vim.v.shell_error ~= 0 or #lines == 0 or (lines[1] == "" and #lines == 1) then
+	if vim.v.shell_error ~= 0 then
+		log.error("Failed to get current repo (gh CLI error): " .. (lines[1] or "unknown error"))
+		return nil
+	end
+	if #lines == 0 or (lines[1] == "" and #lines == 1) then
+		log.warn("No repository found in current directory")
 		return nil
 	end
 	return lines[1]:gsub("\n", "")
@@ -10,13 +17,23 @@ end
 
 local function gh_json(cmd)
 	local lines = vim.fn.systemlist(cmd)
-	if vim.v.shell_error ~= 0 or #lines == 0 or (lines[1] == "" and #lines == 1) then
+	if vim.v.shell_error ~= 0 then
+		local error_msg = #lines > 0 and lines[1] or "unknown error"
+		log.error("GitHub CLI command failed: " .. cmd .. " - " .. error_msg)
+		log.notify("GitHub CLI error: " .. error_msg, { title = "Revman Error", icon = "❌" })
+		return nil, error_msg
+	end
+	if #lines == 0 or (lines[1] == "" and #lines == 1) then
+		log.warn("GitHub CLI returned empty response for: " .. cmd)
 		return nil
 	end
 	local output = table.concat(lines, "\n")
 	local ok, json = pcall(vim.json.decode, output)
 	if not ok or not json then
-		return nil, "Failed to parse JSON output: " .. output
+		local parse_error = "Failed to parse JSON output from: " .. cmd .. " - " .. output
+		log.error(parse_error)
+		log.notify("JSON parse error from GitHub CLI", { title = "Revman Error", icon = "❌" })
+		return nil, parse_error
 	end
 	return json
 end
@@ -28,7 +45,7 @@ local function get_gh_pr_view_cmd(pr_number, repo)
 		"view",
 		tostring(pr_number),
 		"--json",
-		"number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,body,commits,reviews",
+		"number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,body,commits,reviews,assignees",
 		"-R",
 		repo,
 	}
@@ -41,6 +58,16 @@ local function get_gh_comments_cmd(pr_number, repo)
 		"-H",
 		"Accept: application/vnd.github+json",
 		string.format("/repos/%s/pulls/%s/comments", repo, pr_number),
+	}
+end
+
+local function get_gh_issue_comments_cmd(pr_number, repo)
+	return {
+		"gh",
+		"api",
+		"-H",
+		"Accept: application/vnd.github+json",
+		string.format("/repos/%s/issues/%s/comments", repo, pr_number),
 	}
 end
 
@@ -57,17 +84,30 @@ local function run_gh_cmd_async(cmd, callback)
 		if code == 0 then
 			local json_str = table.concat(output)
 			local ok, json = pcall(vim.json.decode, json_str)
+			if not ok then
+				local parse_error = "Failed to parse JSON from gh command: " .. table.concat(cmd, " ") .. " - " .. json_str
+				log.error(parse_error)
+				log.notify("GitHub CLI JSON parse error", { title = "Revman Error", icon = "❌" })
+			end
 			vim.schedule(function()
 				callback(ok and json or nil)
 			end)
 		else
+			local error_output = table.concat(output)
+			local cmd_str = table.concat(cmd, " ")
+			log.error("GitHub CLI command failed (exit code " .. code .. "): " .. cmd_str .. " - " .. error_output)
+			log.notify("GitHub CLI command failed: " .. (error_output ~= "" and error_output or "exit code " .. code), 
+				{ title = "Revman Error", icon = "❌" })
 			vim.schedule(function()
-				callback(nil)
+				callback(nil, "Command failed with exit code " .. code .. ": " .. error_output)
 			end)
 		end
 	end)
 	stdout:read_start(function(err, data)
-		assert(not err, err)
+		if err then
+			log.error("Error reading from gh command stdout: " .. err)
+			return
+		end
 		if data then
 			table.insert(output, data)
 		end
@@ -76,6 +116,37 @@ end
 
 function M.get_comments_async(pr_number, repo, callback)
 	run_gh_cmd_async(get_gh_comments_cmd(pr_number, repo), callback)
+end
+
+function M.get_issue_comments_async(pr_number, repo, callback)
+	run_gh_cmd_async(get_gh_issue_comments_cmd(pr_number, repo), callback)
+end
+
+function M.get_all_comments_async(pr_number, repo, callback)
+	-- Get both review comments and regular PR comments
+	M.get_comments_async(pr_number, repo, function(review_comments)
+		M.get_issue_comments_async(pr_number, repo, function(issue_comments)
+			local all_comments = {}
+			
+			-- Add review comments
+			if review_comments then
+				for _, comment in ipairs(review_comments) do
+					comment.comment_type = "review"
+					table.insert(all_comments, comment)
+				end
+			end
+			
+			-- Add issue comments  
+			if issue_comments then
+				for _, comment in ipairs(issue_comments) do
+					comment.comment_type = "issue"
+					table.insert(all_comments, comment)
+				end
+			end
+			
+			callback(all_comments)
+		end)
+	end)
 end
 
 function M.get_pr_async(pr_number, repo, callback)
@@ -107,6 +178,36 @@ function M.list_prs(repo)
 	return gh_json(
 		string.format("gh pr list --json number,title,state,url,author,createdAt,isDraft,reviewDecision -R %s", repo)
 	)
+end
+
+function M.get_assigned_prs(repo)
+	repo = repo or get_current_repo()
+	if not repo then
+		return nil, "Not in a GitHub repository"
+	end
+
+	return gh_json(
+		string.format("gh pr list --search \"assignee:@me OR review-requested:@me\" --json number,title,state,url,author,createdAt,isDraft,reviewDecision,assignees -R %s", repo)
+	)
+end
+
+function M.get_assigned_prs_async(repo, callback)
+	repo = repo or get_current_repo()
+	if not repo then
+		vim.schedule(function()
+			callback(nil, "Not in a GitHub repository")
+		end)
+		return
+	end
+	
+	local cmd = {
+		"gh", "pr", "list",
+		"--search", "assignee:@me OR review-requested:@me",
+		"--json", "number,title,state,url,author,createdAt,isDraft,reviewDecision,assignees",
+		"-R", repo
+	}
+	
+	run_gh_cmd_async(cmd, callback)
 end
 
 function M.get_status_check_rollup(pr_number, repo)

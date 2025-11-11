@@ -78,7 +78,7 @@ function M.create_command_stubs()
 		nargs = "*",
 		complete = function(arglead)
 			-- Light completion without loading heavy modules
-			return { "waiting_for_review", "waiting_for_changes", "approved", "merged", "closed", "needs_nudge" }
+      return { "waiting_for_review", "waiting_for_changes", "approved", "merged", "closed", "needs_nudge", "not_tracked" }
 		end,
 	})
 
@@ -116,6 +116,22 @@ function M.create_command_stubs()
 		end)
 		vim.cmd("RevmanAddPR " .. (opts.args or ""))
 	end, { nargs = 1 })
+
+  vim.api.nvim_create_user_command("RevmanRepairDB", function()
+    ensure_loaded("commands", function()
+      require("revman.commands")
+    end)
+    vim.cmd("RevmanRepairDB")
+  end, {})
+
+
+  vim.api.nvim_create_user_command("RevmanListAssignedPRs", function()
+    ensure_loaded("commands", function()
+      require("revman.commands")
+    end)
+    vim.cmd("RevmanListAssignedPRs")
+  end, {})
+
 
 	-- Sync commands - load sync commands module on first use
 	vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()

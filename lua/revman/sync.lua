@@ -49,6 +49,13 @@ function M.sync_now()
 			log.error("Some PRs failed to sync.")
 		else
 			consecutive_failures = 0
+      
+      -- Sync assigned PRs after successful regular sync
+      workflows.sync_assigned_prs(repo_name, function(assignment_success)
+        if not assignment_success then
+          log.warn("Assignment sync had some failures")
+        end
+      end)
 		end
 	end)
 end

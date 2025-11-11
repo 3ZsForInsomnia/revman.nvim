@@ -1,7 +1,6 @@
 -- Snacks picker integration for revman.nvim
 -- This gets loaded when snacks backend is configured and available
 
-local M = {}
 local function setup_highlights()
   -- Define custom highlight groups with better colors
   vim.api.nvim_set_hl(0, "RevmanPROpen", { fg = "#6366f1" }) -- Softer blue
@@ -15,7 +14,6 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "RevmanPRNumber", { fg = "#fbbf24", bold = true }) -- Amber/yellow for better visibility on dark themes
 end
 
--- Call setup when module loads (only once)
 local highlights_setup = false
 local function ensure_highlights()
   if not highlights_setup then
@@ -23,6 +21,8 @@ local function ensure_highlights()
     highlights_setup = true
   end
 end
+
+local M = {}
 
  -- Helper function to format status text nicely
  local function format_status(status)
@@ -250,7 +250,6 @@ function M.prs(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_prs",
     items = items,
     format = format_pr,
     preview = "preview", -- Use built-in preview that reads item.preview
@@ -326,7 +325,6 @@ function M.open_prs(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_open_prs",
     items = items,
     format = format_pr,
     preview = "preview",
@@ -362,7 +360,6 @@ function M.prs_needing_review(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_prs_needing_review",
     items = items,
     format = format_pr,
     preview = "preview",
@@ -399,7 +396,6 @@ function M.merged_prs(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_merged_prs",
     items = items,
     format = format_pr,
     preview = "preview",
@@ -442,7 +438,6 @@ function M.my_open_prs(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_my_open_prs",
     items = items,
     format = format_pr,
     preview = "preview",
@@ -456,7 +451,6 @@ function M.my_open_prs(opts)
   })
 end
 
--- List PRs needing a nudge
 function M.nudge_prs(opts)
   if not has_snacks() then
     local log = require("revman.log")
@@ -484,7 +478,6 @@ function M.nudge_prs(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_nudge_prs",
     items = items,
     format = format_pr,
     preview = "preview",
@@ -498,8 +491,8 @@ function M.nudge_prs(opts)
   })
 end
 
--- List authors with analytics
-function M.authors(opts)
+-- List PRs where current user is mentioned
+function M.mentioned_prs(opts)
   if not has_snacks() then
     local log = require("revman.log")
     log.error("Snacks picker is not available")
@@ -507,13 +500,100 @@ function M.authors(opts)
   end
 
   opts = opts or {}
-  local author_analytics = require("revman.analytics.authors")
-  local author_stats = author_analytics.get_author_analytics()
-  local authors = {}
+  local utils = require("revman.utils")
+  local pr_lists = require("revman.db.pr_lists")
+  local cmd_utils = require("revman.command-utils")
+  local log = require("revman.log")
+  local current_user = utils.get_current_user()
+  if not current_user then
+    log.error("Could not determine current user")
+    return
+  end
+  local prs = pr_lists.list_mentioned_prs(current_user, {
+    where = { state = "OPEN" }
+  })
+  if #prs == 0 then
+    log.notify("No open PRs where you are mentioned", "info")
+    return
+  end
+
+  local items = {}
+  for _, pr in ipairs(prs) do
+    table.insert(items, add_pr_preview(pr))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    items = items,
+    format = format_pr,
+    preview = "preview",
+    title = "💬 PRs Where You Are Mentioned",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        cmd_utils.default_pr_select_callback(item)
+      end
+    end,
+  })
+end
+
+-- List recently closed/merged PRs (last week)
+function M.recent_prs(opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
+  local pr_lists = require("revman.db.pr_lists")
+  local cmd_utils = require("revman.command-utils")
+  local prs = pr_lists.list_recent_closed_merged(7) -- Last 7 days
+  if #prs == 0 then
+    local log = require("revman.log")
+    log.notify("No recently closed/merged PRs found", "info")
+    return
+  end
+
+  local items = {}
+  for _, pr in ipairs(prs) do
+    table.insert(items, add_pr_preview(pr))
+  end
+
+  local snacks = require("snacks")
+  snacks.picker.pick({
+    items = items,
+    format = format_pr,
+    preview = "preview",
+    title = "📅 Recent PRs (Last Week)",
+    confirm = function(picker, item)
+      picker:close()
+      if item then
+        cmd_utils.default_pr_select_callback(item)
+      end
+    end,
+  })
+end
+ function M.authors(authors_data, opts)
+  if not has_snacks() then
+    local log = require("revman.log")
+    log.error("Snacks picker is not available")
+    return
+  end
+
+  opts = opts or {}
   
-  for author, stats in pairs(author_stats) do
-    stats.author = author -- ensure author field is present for display
-    table.insert(authors, stats)
+  -- Use provided authors data or fetch if not provided
+  local authors = authors_data
+  if not authors or #authors == 0 then
+    local author_analytics = require("revman.analytics.authors")
+    local author_stats = author_analytics.get_author_analytics()
+    authors = {}
+    
+    for author, stats in pairs(author_stats) do
+      stats.author = author -- ensure author field is present for display
+      table.insert(authors, stats)
+    end
   end
 
   local items = {}
@@ -561,7 +641,6 @@ function M.authors(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_authors",
     items = items,
     format = format_author,
     preview = "preview",
@@ -595,7 +674,6 @@ function M.repos(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_repos",
     items = items,
     format = format_repo,
     preview = "none",
@@ -648,7 +726,6 @@ function M.notes(opts)
 
   local snacks = require("snacks")
   snacks.picker.pick({
-    source = "revman_notes",
     items = items,
     format = format_note,
     preview = "preview",

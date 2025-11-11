@@ -5,7 +5,7 @@ local analytics_utils = require("revman.analytics.utils")
 local M = {}
 
 function M.get_author_analytics()
-	local all_prs = pr_lists.list()
+	local all_prs = pr_lists.list({}, true) -- Include not_tracked PRs for analytics
 	local prs_by_author = analytics_utils.get_prs_by_author(all_prs)
 	local pr_comments, author_comments_written, author_comments_received = analytics_utils.aggregate_comments(all_prs)
 

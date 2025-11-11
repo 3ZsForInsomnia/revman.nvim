@@ -174,6 +174,10 @@ function M.pick_prs(prs, opts, on_choice)
 			snacks_picker.my_open_prs(opts)
 		elseif opts.prompt == "PRs Needing a Nudge" then
 			snacks_picker.nudge_prs(opts)
+		elseif opts.prompt == "PRs Where You Are Mentioned" then
+			snacks_picker.mentioned_prs(opts)
+		elseif opts.prompt == "Recent PRs (Last Week)" then
+			snacks_picker.recent_prs(opts)
 		else
 			-- Generic PR picker for snacks
 			local items = {}
@@ -354,7 +358,7 @@ function M.pick_authors(authors, opts, on_choice)
 	if use_snacks then
 		-- Use snacks picker implementation
 		local snacks_picker = require("revman.snacks")
-		snacks_picker.authors(opts)
+		snacks_picker.authors(authors, opts)
 		return
 	elseif use_telescope then
 		opts.entry_maker = function(author)

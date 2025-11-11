@@ -39,7 +39,6 @@ function M.pr_searchable(pr)
 	return table.concat(parts, " ")
 end
 
--- Create display string for PRs
 function M.pr_display(pr)
 	local status_icon = ""
 	if pr.state == "MERGED" then
@@ -94,7 +93,6 @@ function M.author_searchable(author_stats)
 	return table.concat(parts, " ")
 end
 
--- Create display string for authors
 function M.author_display(author_stats)
 	local opened = author_stats.prs_opened or 0
 	local merged = author_stats.prs_merged or 0

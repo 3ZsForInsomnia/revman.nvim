@@ -2,8 +2,6 @@
 -- This registers revman sources with snacks picker globally
 
 local M = {}
-
--- Common helper functions to keep things DRY
 local function create_pr_source_config(source_name, get_prs_fn)
 	local entry_utils = require("revman.picker.entry")
 

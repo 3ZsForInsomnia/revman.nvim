@@ -1,7 +1,4 @@
-*revman.txt*    Plugin for managing GitHub PR reviews in Neovim
 
-==============================================================================
-RevMan.nvim - GitHub Pull Request Review Manager                *revman*
 
 RevMan.nvim is a Neovim plugin to help you track, review, and manage GitHub pull requests across multiple repositories, all from inside Neovim.
 
@@ -35,6 +32,8 @@ Add to your plugin manager and call:
       database = { path = vim.fn.stdpath("state") .. "/revman/revman.db" },
       retention = { days = 30 },
       background = { frequency = 15 },
+      auto_add_assigned_prs = "smart", -- "smart", "smart+manual", "manual", or "off"
+      remove_unassigned_prs = "smart", -- "smart", "always", or "never"
       log_level = "warn",
     })
 
@@ -105,12 +104,39 @@ PRs can have the following review statuses:
 - needs_nudge
 
 ------------------------------------------------------------------------------
+Auto-Assignment Features                                        *revman-auto-assignment*
+
+RevMan.nvim can automatically track PRs where you're assigned or your review 
+is requested, keeping your review queue current without manual intervention.
+
+Configuration:
+
+`auto_add_assigned_prs` - Controls automatic PR addition:
+  - "smart" (default): Auto-add PRs where you're assigned or review-requested 
+  - "smart+manual": Like smart, plus manual selection via :RevmanListAssignedPRs
+  - "manual": Only manual PR addition (no auto-add)
+  - "off": Disable auto-assignment features entirely
+
+`remove_unassigned_prs` - Controls automatic PR removal:
+  - "smart" (default): Remove when unassigned, but preserve if you've interacted
+  - "always": Always remove PRs when unassigned (ignores interaction)
+  - "never": Never automatically remove PRs
+  
+Smart Removal Protection:
+PRs are considered "interacted with" and protected from removal if you've:
+
+The plugin treats being assigned to a PR and having your review requested 
+as equivalent for all auto-assignment purposes.
+
+------------------------------------------------------------------------------
 Tips                                                            *revman-tips*
 
 - Use Telescope pickers to quickly filter and jump to PRs.
 - Use Octo.nvim for a full-featured PR review UI.
 - Add notes to PRs for reminders or TODOs.
 - Enable background sync to keep your PR list fresh.
+- Use "smart" auto-assignment modes for hands-off review queue management
+- Check :RevmanListAssignedPRs periodically to catch any missed assignments
 
 ------------------------------------------------------------------------------
 Help                                                            *revman-help*

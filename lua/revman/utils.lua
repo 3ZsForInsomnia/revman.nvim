@@ -41,6 +41,10 @@ end
 M.is_gh_available = function()
 	local lines = vim.fn.systemlist("gh auth status")
 	if vim.v.shell_error ~= 0 then
+		local log = require("revman.log")
+		local error_msg = #lines > 0 and lines[1] or "unknown error"
+		log.error("GitHub CLI not authenticated: " .. error_msg)
+		log.notify("GitHub CLI authentication required", { title = "Revman Error", icon = "❌" })
 		return false
 	end
 	for _, line in ipairs(lines) do
@@ -48,12 +52,20 @@ M.is_gh_available = function()
 			return true
 		end
 	end
+	local log = require("revman.log")
+	log.warn("GitHub CLI available but not logged in")
 	return false
 end
 
 M.get_current_repo = function()
 	local lines = vim.fn.systemlist("gh repo view --json nameWithOwner -q .nameWithOwner")
-	if vim.v.shell_error ~= 0 or #lines == 0 or (lines[1] == "" and #lines == 1) then
+	if vim.v.shell_error ~= 0 then
+		local log = require("revman.log")
+		local error_msg = #lines > 0 and lines[1] or "unknown error"
+		log.error("Failed to get current repo: " .. error_msg)
+		return nil
+	end
+	if #lines == 0 or (lines[1] == "" and #lines == 1) then
 		return nil
 	end
 	return lines[1]:gsub("\n", "")
@@ -61,10 +73,57 @@ end
 
 M.get_current_user = function()
 	local lines = vim.fn.systemlist("gh api user --jq .login")
-	if vim.v.shell_error ~= 0 or #lines == 0 or (lines[1] == "" and #lines == 1) then
+	if vim.v.shell_error ~= 0 then
+		local log = require("revman.log")
+		local error_msg = #lines > 0 and lines[1] or "unknown error"
+		log.error("Failed to get current user: " .. error_msg)
+		log.notify("Failed to get GitHub user info", { title = "Revman Error", icon = "❌" })
 		return nil
 	end
-	return lines[1]:gsub("\n", "")
+	if #lines == 0 or (lines[1] == "" and #lines == 1) then
+		return nil
+	end
+	local username = lines[1]:gsub("\n", "")
+	
+	-- Update users table with current user
+	local db_users = require("revman.db.users")
+	-- Fetch profile for current user if not already available
+	db_users.find_or_create_with_profile(username, true)
+	
+	return username
+end
+
+M.get_current_user_with_profile = function()
+	local lines = vim.fn.systemlist("gh api user")
+	if vim.v.shell_error ~= 0 then
+		local log = require("revman.log")
+		local error_msg = #lines > 0 and lines[1] or "unknown error"
+		log.error("Failed to get user profile: " .. error_msg)
+		log.notify("Failed to get GitHub user profile", { title = "Revman Error", icon = "❌" })
+		return nil
+	end
+	if #lines == 0 or (lines[1] == "" and #lines == 1) then
+		return nil
+	end
+	
+	local output = table.concat(lines, "\n")
+	local ok, user_data = pcall(vim.json.decode, output)
+	if not ok or not user_data then
+		local log = require("revman.log")
+		log.error("Failed to parse user profile JSON: " .. output)
+		log.notify("Failed to parse GitHub user profile", { title = "Revman Error", icon = "❌" })
+		return nil
+	end
+	
+	-- Update users table with full profile data
+	local db_users = require("revman.db.users")
+	local profile_data = {
+		display_name = user_data.name,
+		avatar_url = user_data.avatar_url
+	}
+	db_users.find_or_create(user_data.login, profile_data)
+	
+	return user_data
 end
 
 M.ensure_repo = function(repo_name)

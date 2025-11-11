@@ -23,6 +23,21 @@ function M.extract_pr_fields(pr)
 	}
 end
 
+function M.extract_assignees(pr)
+	if not pr or not pr.assignees then
+		return {}
+	end
+	
+	local assignees = {}
+	for _, assignee in ipairs(pr.assignees) do
+		if assignee.login then
+			table.insert(assignees, assignee.login)
+		end
+	end
+	
+	return assignees
+end
+
 function M.extract_multiple_prs(prs_data)
 	local result = {}
 	for _, pr in ipairs(prs_data or {}) do

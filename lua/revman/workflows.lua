@@ -131,7 +131,19 @@ function M.sync_pr(pr_number, repo_name, callback)
 			pr_db_row.ci_status = ci.extract_ci_status(pr_data.statusCheckRollup)
 		end
 
+		-- Extract and sync assignees
+		local assignees = github_prs.extract_assignees(pr_data)
+
 		local pr_id = logic_prs.upsert_pr(db_prs, db_repos, pr_db_row)
+
+		-- Ensure PR author exists in users table with profile
+		if pr_db_row.author then
+			local db_users = require("revman.db.users")
+			db_users.find_or_create_with_profile(pr_db_row.author, true)
+		end
+		-- Update assignee relationships
+		local pr_assignees = require("revman.db.pr_assignees")
+		pr_assignees.replace_assignees_for_pr(pr_id, assignees)
 
 		local history = status.get_status_history(pr_id)
 		if not history or #history == 0 then
@@ -140,7 +152,7 @@ function M.sync_pr(pr_number, repo_name, callback)
 
 		pr_status.maybe_transition_status(pr_id, old_status, new_status)
 
-		github_data.get_comments_async(pr_number, repo_name, function(comments)
+		github_data.get_all_comments_async(pr_number, repo_name, function(comments)
 			local formatted_comments = {}
 			for _, c in ipairs(comments or {}) do
 				local author = c.user and c.user.login or "unknown"
@@ -153,6 +165,12 @@ function M.sync_pr(pr_number, repo_name, callback)
 						body = c.body,
 						in_reply_to_id = c.in_reply_to_id,
 					})
+					
+					-- Ensure comment author exists in users table with profile
+					if author ~= "unknown" then
+						local db_users = require("revman.db.users")
+						db_users.find_or_create_with_profile(author, true)
+					end
 				end
 			end
 			db_comments.replace_for_pr(pr_id, formatted_comments)
@@ -182,6 +200,127 @@ function M.select_pr_for_review(pr_id)
 	vim.cmd(string.format("Octo pr view %d", pr.number))
 
 	return true
+end
+
+function M.sync_assigned_prs(repo_name, callback)
+  repo_name = repo_name or utils.get_current_repo()
+  if not repo_name then
+    log.error("No repo specified for assignment sync")
+    return
+  end
+
+  local config = require("revman.config")
+  local assignments = require("revman.logic.assignments")
+  local tracking_mode = config.get().assignment_tracking or "smart"
+  
+  if tracking_mode == "off" then
+    if callback then callback(true) end
+    return
+  end
+  
+  -- Only auto-add in "smart" and "always" modes, other modes require manual selection
+  if tracking_mode == "manual" then
+    if callback then callback(true) end
+    return
+  end
+  
+  assignments.find_new_assignments(repo_name, function(new_assignments, err)
+    if not new_assignments then
+      log.error("Failed to find new assignments: " .. (err or "unknown error"))
+      if callback then callback(false) end
+      return
+    end
+    
+    if #new_assignments == 0 then
+      log.info("No new PR assignments found")
+      if callback then callback(true) end
+      return
+    end
+    
+    log.info("Found " .. #new_assignments .. " new PR assignments")
+    
+    local remaining = #new_assignments
+    local errors = {}
+    local results = {}
+    
+    for _, assignment in ipairs(new_assignments) do
+      M.sync_pr(assignment.number, repo_name, function(pr_id, sync_err)
+        if pr_id then
+          table.insert(results, pr_id)
+          log.info("Auto-added assigned PR #" .. assignment.number)
+        else
+          table.insert(errors, "Failed to sync PR #" .. assignment.number .. ": " .. (sync_err or "unknown error"))
+        end
+        
+        remaining = remaining - 1
+        if remaining == 0 then
+          if #errors > 0 then
+            log.error("Some assigned PRs failed to sync: " .. table.concat(errors, "; "))
+          else
+            log.notify("Auto-added " .. #results .. " assigned PRs")
+          end
+          
+          -- After adding new assignments, check for removed assignments
+          M.handle_removed_assignments(repo_name, function(removal_success)
+            if callback then
+              callback(#errors == 0 and removal_success)
+            end
+          end)
+        end
+      end)
+    end
+  end)
+end
+
+function M.handle_removed_assignments(repo_name, callback)
+  local config = require("revman.config")
+  local assignments = require("revman.logic.assignments")
+  local tracking_mode = config.get().assignment_tracking or "smart"
+  
+  if tracking_mode == "manual" or tracking_mode == "always" then
+    if callback then callback(true) end
+    return
+  end
+  
+  assignments.find_removed_assignments(repo_name, function(removed_assignments, err)
+    if not removed_assignments then
+      log.warn("Failed to check for removed assignments: " .. (err or "unknown error"))
+      if callback then callback(false) end
+      return
+    end
+    
+    if #removed_assignments == 0 then
+      if callback then callback(true) end
+      return
+    end
+    
+    log.info("Found " .. #removed_assignments .. " PRs where user is no longer assigned")
+    
+    local removed_count = 0
+    for _, pr in ipairs(removed_assignments) do
+      if assignments.should_remove_pr(pr.id, tracking_mode) then
+        -- Set status to not_tracked instead of deleting
+        local pr_status = require("revman.db.pr_status")
+        local status = require("revman.db.status")
+        local not_tracked_id = status.get_id("not_tracked")
+        if not_tracked_id then
+          pr_status.maybe_transition_status(pr.id, nil, "not_tracked")
+          removed_count = removed_count + 1
+          log.info("Marked PR #" .. pr.number .. " as not_tracked (no longer assigned)")
+        else
+          log.warn("Cannot mark PR as not_tracked - status not available (database may not be fully initialized)")
+        end
+      else
+        log.info("Keeping PR #" .. pr.number .. " (user has notes or activity)")
+      end
+    end
+    
+    if removed_count > 0 then
+      log.notify("Marked " .. removed_count .. " unassigned PRs as not tracked")
+    end
+    
+    if callback then callback(true) end
+  end)
 end
 
 return M

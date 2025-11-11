@@ -4,14 +4,28 @@ local with_db = require("revman.db.helpers").with_db
 local log = require("revman.log")
 
 function M.get_id(name)
+  -- Return null safely if database isn't ready
+  local ok, result = pcall(function()
 	return with_db(function(db)
 		local rows = db:select("review_status", { where = { name = name } })
 		if rows[1] then
 			return rows[1].id
 		else
-			log.error("Unknown status: " .. name)
+        return nil
 		end
 	end)
+  end)
+  
+  if not ok then
+    -- Database not ready, return nil silently
+    return nil
+  end
+  
+  if not result then
+    log.warn("Status not found: " .. name .. " (database may not be fully initialized)")
+  end
+  
+  return result
 end
 
 function M.get_name(id)
