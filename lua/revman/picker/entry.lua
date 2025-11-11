@@ -40,8 +40,9 @@ function M.pr_searchable(pr)
 end
 
 function M.pr_display(pr)
+	local github_prs = require("revman.github.prs")
 	local status_icon = ""
-	if pr.state == "MERGED" then
+	if github_prs.is_merged(pr) then
 		status_icon = "✓ "
 	elseif pr.state == "CLOSED" then
 		status_icon = "✗ "

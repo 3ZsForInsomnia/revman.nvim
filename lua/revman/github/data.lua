@@ -45,7 +45,7 @@ local function get_gh_pr_view_cmd(pr_number, repo)
 		"view",
 		tostring(pr_number),
 		"--json",
-		"number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,body,commits,reviews,assignees",
+		"number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,body,commits,reviews,assignees,mergedBy,mergedAt",
 		"-R",
 		repo,
 	}
@@ -180,6 +180,53 @@ function M.list_prs(repo)
 	)
 end
 
+-- List PRs with all detailed fields in one call (efficient for syncing)
+function M.list_prs_detailed(repo, state_filter)
+	repo = repo or get_current_repo()
+	if not repo then
+		return nil, "Not in a GitHub repository"
+	end
+	
+	local fields = "number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,commits,reviews,assignees,mergedBy,mergedAt"
+	local cmd = string.format("gh pr list --json %s -R %s", fields, repo)
+	
+	-- Add state filter if specified
+	if state_filter then
+		cmd = cmd .. " --state " .. state_filter
+	end
+	
+	-- Limit to reasonable batch size
+	cmd = cmd .. " --limit 1000"
+	
+	return gh_json(cmd)
+end
+
+-- Async version for batch PR sync
+function M.list_prs_detailed_async(repo, state_filter, callback)
+	repo = repo or get_current_repo()
+	if not repo then
+		vim.schedule(function()
+			callback(nil, "Not in a GitHub repository")
+		end)
+		return
+	end
+	
+	local fields = "number,title,state,url,author,createdAt,isDraft,reviewDecision,statusCheckRollup,commits,reviews,assignees,mergedBy,mergedAt"
+	local cmd = {
+		"gh", "pr", "list",
+		"--json", fields,
+		"-R", repo,
+		"--limit", "1000"
+	}
+	
+	if state_filter then
+		table.insert(cmd, "--state")
+		table.insert(cmd, state_filter)
+	end
+	
+	run_gh_cmd_async(cmd, callback)
+end
+
 function M.get_assigned_prs(repo)
 	repo = repo or get_current_repo()
 	if not repo then
@@ -259,6 +306,8 @@ function M.convert_pr_to_db(pr, repo_id)
 		ci_status = ci_status,
 		review_status_id = nil,
 		comment_count = 0,
+		merged_by = (pr.mergedBy and type(pr.mergedBy) == "table" and pr.mergedBy.login) or nil,
+		merged_at = (pr.mergedAt and type(pr.mergedAt) == "string" and pr.mergedAt) or nil,
 	}
 end
 

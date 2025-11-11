@@ -68,9 +68,10 @@ function M.count_closed_without_merge(prs)
 end
 
 function M.count_merged(prs)
+	local github_prs = require("revman.github.prs")
 	local count = 0
 	for _, pr in ipairs(prs) do
-		if pr.state == "MERGED" then
+		if github_prs.is_merged(pr) then
 			count = count + 1
 		end
 	end
@@ -78,6 +79,7 @@ function M.count_merged(prs)
 end
 
 function M.opened_merged_per_week(prs)
+	local github_prs = require("revman.github.prs")
 	local opened_per_week, merged_per_week = {}, {}
 	for _, pr in ipairs(prs) do
 		local created_ts = pr.created_at and utils.parse_iso8601(pr.created_at)
@@ -85,11 +87,15 @@ function M.opened_merged_per_week(prs)
 			local wk = M.week_key(created_ts)
 			opened_per_week[wk] = (opened_per_week[wk] or 0) + 1
 		end
-		if pr.state == "MERGED" and pr.last_activity then
-			local merged_ts = utils.parse_iso8601(pr.last_activity)
-			if merged_ts then
-				local wk = M.week_key(merged_ts)
-				merged_per_week[wk] = (merged_per_week[wk] or 0) + 1
+		if github_prs.is_merged(pr) then
+			-- Prefer merged_at for accuracy, fall back to last_activity
+			local merged_timestamp = pr.merged_at or pr.last_activity
+			if merged_timestamp then
+				local merged_ts = utils.parse_iso8601(merged_timestamp)
+				if merged_ts then
+					local wk = M.week_key(merged_ts)
+					merged_per_week[wk] = (merged_per_week[wk] or 0) + 1
+				end
 			end
 		end
 	end

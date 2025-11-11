@@ -5,7 +5,7 @@ local function create_commands()
 	vim.api.nvim_create_user_command("RevmanSyncAllPRs", function()
 	local workflows = require("revman.workflows")
 	local log = require("revman.log")
-	workflows.sync_all_prs(nil, false, function(success)
+	workflows.sync_all_prs_batch(nil, false, function(success)
 		if not success then
 			log.error("Some PRs failed to sync.")
 		end

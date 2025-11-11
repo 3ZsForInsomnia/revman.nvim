@@ -63,6 +63,8 @@ M.ensure_schema = function()
 			ci_status TEXT,
 			review_status_id INTEGER,
 			comment_count INTEGER DEFAULT 0,
+			merged_by TEXT,
+			merged_at TEXT,
 			UNIQUE(repo_id, number),
 			FOREIGN KEY(repo_id) REFERENCES repositories(id),
 			FOREIGN KEY(review_status_id) REFERENCES review_status(id)
@@ -147,15 +149,15 @@ M.ensure_schema = function()
 		"needs_nudge",
 		"not_tracked",
 	}
-  
-  -- Only insert statuses that don't already exist
-  for _, name in ipairs(statuses) do
-    local existing = db:select("review_status", { where = { name = name } })
-    if not existing or #existing == 0 then
-      db:insert("review_status", { name = name })
-      log.info("Added review status: " .. name)
-    end
-  end
+
+	-- Only insert statuses that don't already exist
+	for _, name in ipairs(statuses) do
+		local existing = db:select("review_status", { where = { name = name } })
+		if not existing or #existing == 0 then
+			db:insert("review_status", { name = name })
+			log.info("Added review status: " .. name)
+		end
+	end
 
 	log.info("Review statuses initialized")
 	db:close()
@@ -175,98 +177,131 @@ end
 function M.run_migrations(db)
 	-- Migration 1: Populate users table from existing PR authors
 	M.migrate_existing_authors(db)
+	-- Migration 2: Add merged_by and merged_at fields
+	M.add_merged_fields_migration(db)
+end
+
+function M.add_merged_fields_migration(db)
+	log.info("Running migration: add merged_by and merged_at columns")
+
+	local columns_to_add = {
+		{ name = "merged_by", type = "TEXT" },
+		{ name = "merged_at", type = "TEXT" },
+	}
+
+	for _, col in ipairs(columns_to_add) do
+		local column_exists = pcall(function()
+			db:execute(string.format("SELECT %s FROM pull_requests LIMIT 1", col.name))
+		end)
+
+		if not column_exists then
+			local ok, err = pcall(function()
+				db:execute(string.format("ALTER TABLE pull_requests ADD COLUMN %s %s", col.name, col.type))
+			end)
+
+			if ok then
+				log.info("Added column: " .. col.name)
+			else
+				log.warn("Failed to add column " .. col.name .. ": " .. tostring(err))
+			end
+		else
+			log.info("Column " .. col.name .. " already exists, skipping")
+		end
+	end
+
+	log.info("Merged fields migration completed")
 end
 
 function M.migrate_existing_authors(db)
 	log.info("Running migration: populate users table from existing authors")
-	
-  -- Check if users table exists by trying to query it
-  local users_table_exists = pcall(function()
-    db:select("users", { limit = 1 })
-  end)
-  
-  if not users_table_exists then
-    log.warn("Users table does not exist, skipping author migration")
-    return
-  end
-  
-  -- Get all unique authors from pull_requests  
-  -- Note: sqlite.lua doesn't support DISTINCT in select, so we'll get all and deduplicate
-  local ok, all_prs = pcall(function()
-    return db:select("pull_requests", {})
-  end)
-  
-  if not ok or not all_prs then
-    log.warn("Could not query pull_requests table, skipping migration")
-    return
-  end
-  
-  -- Deduplicate authors manually
-  local unique_authors = {}
-  for _, row in ipairs(all_prs) do
-    if row.author and row.author ~= "" then
-      unique_authors[row.author] = true
-    end
-  end
-	
-  local author_list = {}
-  for author, _ in pairs(unique_authors) do
-    table.insert(author_list, author)
-  end
-  
-  if #author_list == 0 then
+
+	-- Check if users table exists by trying to query it
+	local users_table_exists = pcall(function()
+		db:select("users", { limit = 1 })
+	end)
+
+	if not users_table_exists then
+		log.warn("Users table does not exist, skipping author migration")
+		return
+	end
+
+	-- Get all unique authors from pull_requests
+	-- Note: sqlite.lua doesn't support DISTINCT in select, so we'll get all and deduplicate
+	local ok, all_prs = pcall(function()
+		return db:select("pull_requests", {})
+	end)
+
+	if not ok or not all_prs then
+		log.warn("Could not query pull_requests table, skipping migration")
+		return
+	end
+
+	-- Deduplicate authors manually
+	local unique_authors = {}
+	for _, row in ipairs(all_prs) do
+		if row.author and row.author ~= "" then
+			unique_authors[row.author] = true
+		end
+	end
+
+	local author_list = {}
+	for author, _ in pairs(unique_authors) do
+		table.insert(author_list, author)
+	end
+
+	if #author_list == 0 then
 		log.info("No existing authors found to migrate")
 		return
 	end
-	
-  -- Check if migration already ran by seeing if users already exist
-  local users_ok, existing_users = pcall(function()
-    return db:select("users", {})
-  end)
-  
-  if users_ok and existing_users and #existing_users > 0 then
-    log.info("Users table already populated (" .. #existing_users .. " users), skipping author migration")
-    return
-  end
-  
+
+	-- Check if migration already ran by seeing if users already exist
+	local users_ok, existing_users = pcall(function()
+		return db:select("users", {})
+	end)
+
+	if users_ok and existing_users and #existing_users > 0 then
+		log.info("Users table already populated (" .. #existing_users .. " users), skipping author migration")
+		return
+	end
+
 	local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
-  local migrated_count = 0
-	
-  for _, username in ipairs(author_list) do
+	local migrated_count = 0
+
+	for _, username in ipairs(author_list) do
 		if username and username ~= "" then
 			-- Check if user already exists
-      local user_exists = false
-      local check_ok, existing_user = pcall(function()
-        return db:select("users", { where = { username = username } })
-      end)
-			
-      if check_ok and existing_user and #existing_user > 0 then
-        user_exists = true
-      end
-      
-      if not user_exists then
-        -- Insert new user
-        local insert_ok, insert_err = pcall(function()
-          db:insert("users", {
-            username = username,
-            display_name = nil, -- Will be populated by future GitHub fetch
-            avatar_url = nil,   -- Will be populated by future GitHub fetch
-            first_seen = now,
-            last_seen = now
-          })
-        end)
-        
-        if insert_ok then
-          migrated_count = migrated_count + 1
-          log.info("Migrated user: " .. username)
-        else
-          log.warn("Failed to migrate user " .. username .. ": " .. tostring(insert_err))
-        end
+			local user_exists = false
+			local check_ok, existing_user = pcall(function()
+				return db:select("users", { where = { username = username } })
+			end)
+
+			if check_ok and existing_user and #existing_user > 0 then
+				user_exists = true
+			end
+
+			if not user_exists then
+				-- Insert new user
+				local insert_ok, insert_err = pcall(function()
+					db:insert("users", {
+						username = username,
+						display_name = nil, -- Will be populated by future GitHub fetch
+						avatar_url = nil, -- Will be populated by future GitHub fetch
+						first_seen = now,
+						last_seen = now,
+					})
+				end)
+
+				if insert_ok then
+					migrated_count = migrated_count + 1
+					log.info("Migrated user: " .. username)
+				else
+					log.warn("Failed to migrate user " .. username .. ": " .. tostring(insert_err))
+				end
 			end
 		end
 	end
-	
-  log.info("Author migration completed: " .. migrated_count .. " users migrated")
+
+	log.info("Author migration completed: " .. migrated_count .. " users migrated")
 end
 
 return M

@@ -34,12 +34,13 @@ local M = {}
  
 local function add_pr_preview(pr)
   local ci = require("revman.github.ci")
+  local github_prs = require("revman.github.prs")
   local ci_status = pr.ci_status or "unknown"
   local ci_icon = ci.get_status_icon({ status = ci_status })
   
   -- Enhanced preview with icons and colors
   local state_icon = ""
-  if pr.state == "MERGED" then
+  if github_prs.is_merged(pr) then
     state_icon = "✅"
   elseif pr.state == "CLOSED" then
     state_icon = "❌"

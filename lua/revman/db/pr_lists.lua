@@ -16,20 +16,23 @@ function M.list(opts, include_not_tracked)
 			query_opts.order_by = defaultSort
 		end
 		
-		-- Exclude not_tracked status by default unless explicitly requested
+		local rows = db:select("pull_requests", query_opts)
+		
+		-- Exclude not_tracked status by filtering in Lua
+		-- (sqlite.lua doesn't handle != well with multiple WHERE conditions)
 		if not include_not_tracked then
-			if not query_opts.where then
-				query_opts.where = {}
-			end
-			if not query_opts.where.review_status_id then
-				local not_tracked_id = status.get_id("not_tracked")
-        if not_tracked_id then -- Only apply filter if status exists
-					query_opts.where.review_status_id = { "!=", not_tracked_id }
+			local not_tracked_id = status.get_id("not_tracked")
+			if not_tracked_id then
+				local filtered_rows = {}
+				for _, row in ipairs(rows) do
+					if row.review_status_id ~= not_tracked_id then
+						table.insert(filtered_rows, row)
+					end
 				end
+				return filtered_rows
 			end
 		end
 		
-		local rows = db:select("pull_requests", query_opts)
 		return rows
 	end)
 end
@@ -89,15 +92,29 @@ end
 
 function M.list_merged(opts)
 	return with_db(function(db)
+		local github_prs = require("revman.github.prs")
 		local query_opts = {}
-		query_opts.where = { state = "MERGED" }
+		
+		-- Note: sqlite.lua doesn't support complex OR in where clause well,
+		-- so we query broadly and filter in Lua
+		-- Get all PRs that might be merged (state=MERGED or have merge fields)
 		if opts and opts.order_by then
 			query_opts.order_by = opts.order_by
 		else
 			query_opts.order_by = defaultSort
 		end
-		local rows = db:select("pull_requests", query_opts)
-		return rows
+		
+		local all_rows = db:select("pull_requests", query_opts)
+		
+		-- Filter to only merged PRs using our authority function
+		local merged_rows = {}
+		for _, pr in ipairs(all_rows) do
+			if github_prs.is_merged(pr) then
+				table.insert(merged_rows, pr)
+			end
+		end
+		
+		return merged_rows
 	end)
 end
 

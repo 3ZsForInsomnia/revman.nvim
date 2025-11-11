@@ -5,12 +5,15 @@ local utils = require("revman.utils")
 local M = {}
 
 function M.average_pr_age_at_merge()
+	local github_prs = require("revman.github.prs")
 	local prs = pr_lists.list()
 	local ages = {}
 	for _, pr in ipairs(prs) do
-		if pr.state == "MERGED" then
+		if github_prs.is_merged(pr) then
 			local created = pr.created_at and utils.parse_iso8601(pr.created_at)
-			local merged = pr.last_activity and utils.parse_iso8601(pr.last_activity)
+			-- Prefer merged_at over last_activity for accuracy
+			local merged = (pr.merged_at and utils.parse_iso8601(pr.merged_at)) 
+				or (pr.last_activity and utils.parse_iso8601(pr.last_activity))
 			if created and merged then
 				local author = pr.author or "unknown"
 				ages[author] = ages[author] or { total = 0, count = 0 }

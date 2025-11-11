@@ -75,7 +75,7 @@ local function run_pr_resync(callback)
     
     local repo_name = utils.get_current_repo()
     if repo_name then
-      workflows.sync_all_prs(repo_name, true, function(success)
+      workflows.sync_all_prs_repair_batch(repo_name, function(success)
         vim.schedule(function()
           if success then
             log.info("✓ PR resync completed")

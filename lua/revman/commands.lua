@@ -32,10 +32,15 @@ local function create_commands()
 		local picker = require("revman.picker")
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
-		local prs = pr_lists.list_with_status({
-			where = { state = "MERGED" },
+		local status = require("revman.db.status")
+		-- Use list_merged which now uses is_merged logic
+		local prs = pr_lists.list_merged({
 			order_by = { desc = { "last_activity" } },
 		})
+		-- Add status names
+		for _, pr in ipairs(prs) do
+			pr.review_status = status.get_name(pr.review_status_id)
+		end
 		picker.pick_prs(prs, { prompt = "Merged PRs" }, cmd_utils.default_pr_select_callback)
 	end, {})
 

@@ -21,16 +21,17 @@ local function create_pr_source_config(source_name, get_prs_fn)
 
 			return items
 		end,
-		format = function(item)
-			local pr = item
-			local status_icon = ""
-			if pr.state == "MERGED" then
-				status_icon = "✓ "
-			elseif pr.state == "CLOSED" then
-				status_icon = "✗ "
-			elseif pr.is_draft and pr.is_draft == 1 then
-				status_icon = "📝 "
-			end
+	format = function(item)
+		local github_prs = require("revman.github.prs")
+		local pr = item
+		local status_icon = ""
+		if github_prs.is_merged(pr) then
+			status_icon = "✓ "
+		elseif pr.state == "CLOSED" then
+			status_icon = "✗ "
+		elseif pr.is_draft and pr.is_draft == 1 then
+			status_icon = "📝 "
+		end
 
 			local review_status = pr.review_status and (" [" .. pr.review_status .. "]") or ""
 
@@ -334,18 +335,19 @@ local function register_sources()
 				end
 			end
 
-			return items
-		end,
-		format = function(item)
-			local pr = item
-			local status_icon = ""
-			if pr.state == "MERGED" then
-				status_icon = "✓ "
-			elseif pr.state == "CLOSED" then
-				status_icon = "✗ "
-			elseif pr.is_draft and pr.is_draft == 1 then
-				status_icon = "📝 "
-			end
+		return items
+	end,
+	format = function(item)
+		local github_prs = require("revman.github.prs")
+		local pr = item
+		local status_icon = ""
+		if github_prs.is_merged(pr) then
+			status_icon = "✓ "
+		elseif pr.state == "CLOSED" then
+			status_icon = "✗ "
+		elseif pr.is_draft and pr.is_draft == 1 then
+			status_icon = "📝 "
+		end
 
 			local note_preview = ""
 			if pr.note_content then

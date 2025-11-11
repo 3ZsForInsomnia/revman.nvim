@@ -20,6 +20,8 @@ function M.extract_pr_fields(pr)
 		review_decision = pr.reviewDecision,
 		comment_count = pr.comment_count,
 		last_activity = latest_activity_time.latest_activity_time,
+		merged_by = (pr.mergedBy and type(pr.mergedBy) == "table" and pr.mergedBy.login) or nil,
+		merged_at = (pr.mergedAt and type(pr.mergedAt) == "string" and pr.mergedAt) or nil,
 	}
 end
 
@@ -113,6 +115,43 @@ function M.has_new_activity(latest_activity, last_viewed_time)
 	local comment_newer = latest_activity.latest_comment_time and latest_activity.latest_comment_time > last_viewed_time
 	local commit_newer = latest_activity.latest_commit_time and latest_activity.latest_commit_time > last_viewed_time
 	return comment_newer or commit_newer
+end
+
+-- Check if PR has a merged_at timestamp
+function M.has_merged_at(pr)
+	return pr and pr.merged_at and pr.merged_at ~= ""
+end
+
+-- Check if PR has a merged_by user
+function M.has_merged_by(pr)
+	return pr and pr.merged_by and pr.merged_by ~= ""
+end
+
+-- Check if PR state is MERGED
+function M.has_merged_state(pr)
+	return pr and pr.state == "MERGED"
+end
+
+-- Authority function: determines if a PR is merged
+-- Uses early returns for efficiency
+function M.is_merged(pr)
+	if not pr then
+		return false
+	end
+	
+	if M.has_merged_at(pr) then
+		return true
+	end
+	
+	if M.has_merged_by(pr) then
+		return true
+	end
+	
+	if M.has_merged_state(pr) then
+		return true
+	end
+	
+	return false
 end
 
 return M
