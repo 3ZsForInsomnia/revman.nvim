@@ -2,8 +2,19 @@ local config = require("revman.config")
 
 local M = {}
 
+-- Check if we're in a git repository
+local function is_in_git_repo()
+	local lines = vim.fn.systemlist("gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null")
+	return vim.v.shell_error == 0 and #lines > 0 and lines[1] ~= ""
+end
+
 function M.setup(user_opts)
 	config.setup(user_opts)
+
+	-- Early exit if not in a git repository
+	if not is_in_git_repo() then
+		return
+	end
 
 	-- Create lightweight command stubs immediately
 	local command_stubs = require("revman.command_stubs")
