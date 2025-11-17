@@ -14,7 +14,6 @@ function M.sync_now()
 	-- Only sync if we are in a GitHub repository
 	local repo_name = utils.get_current_repo()
 	if not repo_name then
-		M.disable_background_sync() -- Stop any existing timer
 		log.info("Not in a GitHub repository, skipping sync.")
 		return
 	end
@@ -22,11 +21,10 @@ function M.sync_now()
 	-- Only sync if the repo is in the database/has been added
 	local repo_row = utils.ensure_repo(repo_name)
 	if not repo_row then
-		M.disable_background_sync()
 		log.error(
 			"Current repository '"
 				.. repo_name
-				.. "' is not in the database. Please add it with :RevmanAddRepo. Background sync disabled."
+				.. "' is not in the database. Please add it with :RevmanAddRepo to enable syncing."
 		)
 		return
 	end
@@ -107,8 +105,7 @@ end
 function M.setup_autosync()
 	local repo_name = utils.get_current_repo()
 	if not repo_name then
-		M.disable_background_sync()
-		log.info("Not in a GitHub repository, skipping sync.")
+		log.info("Not in a GitHub repository, background sync will not start.")
 		return
 	end
 

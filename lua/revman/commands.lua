@@ -6,7 +6,22 @@ local function create_commands()
 		local picker = require("revman.picker")
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
-		local prs = pr_lists.list_with_status()
+		local utils = require("revman.utils")
+		local log = require("revman.log")
+		
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+		
+		local prs = pr_lists.list_with_status({ where = { repo_id = repo_row.id } })
 		picker.pick_prs(prs, { prompt = "All PRs" }, cmd_utils.default_pr_select_callback)
 	end, {})
 
@@ -14,7 +29,22 @@ local function create_commands()
 		local picker = require("revman.picker")
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
-		local prs = pr_lists.list_with_status({ where = { state = "OPEN" } })
+		local utils = require("revman.utils")
+		local log = require("revman.log")
+		
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+		
+		local prs = pr_lists.list_with_status({ where = { state = "OPEN", repo_id = repo_row.id } })
 		picker.pick_prs(prs, { prompt = "Open PRs" }, cmd_utils.default_pr_select_callback)
 	end, {})
 
@@ -23,8 +53,23 @@ local function create_commands()
 		local picker = require("revman.picker")
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
+		local utils = require("revman.utils")
+		local log = require("revman.log")
+		
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+		
 		local status_id = db_status.get_id("waiting_for_review")
-		local prs = pr_lists.list_with_status({ where = { review_status_id = status_id, state = "OPEN" } })
+		local prs = pr_lists.list_with_status({ where = { review_status_id = status_id, state = "OPEN", repo_id = repo_row.id } })
 		picker.pick_prs(prs, { prompt = "PRs Needing Review" }, cmd_utils.default_pr_select_callback)
 	end, {})
 
@@ -33,8 +78,24 @@ local function create_commands()
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
 		local status = require("revman.db.status")
+		local utils = require("revman.utils")
+		local log = require("revman.log")
+		
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+		
 		-- Use list_merged which now uses is_merged logic
 		local prs = pr_lists.list_merged({
+			where = { repo_id = repo_row.id },
 			order_by = { desc = { "last_activity" } },
 		})
 		-- Add status names
@@ -50,13 +111,26 @@ local function create_commands()
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
 		local log = require("revman.log")
+		
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+		
 		local current_user = utils.get_current_user()
 		if not current_user then
 			log.error("Could not determine current user")
 			return
 		end
 		local prs = pr_lists.list_with_status({
-			where = { state = "OPEN", author = current_user },
+			where = { state = "OPEN", author = current_user, repo_id = repo_row.id },
 		})
 		picker.pick_prs(prs, { prompt = "My Open PRs" }, cmd_utils.default_pr_select_callback)
 	end, {})
@@ -133,13 +207,26 @@ local function create_commands()
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
 		local log = require("revman.log")
+		
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+		
 		local current_user = utils.get_current_user()
 		if not current_user then
 			log.error("Could not determine current user")
 			return
 		end
 		local prs = pr_lists.list_mentioned_prs(current_user, {
-			where = { state = "OPEN" }
+			where = { state = "OPEN", repo_id = repo_row.id }
 		})
 		if #prs == 0 then
 			log.notify("No open PRs where you are mentioned", "info")
@@ -152,9 +239,23 @@ local function create_commands()
 		local picker = require("revman.picker")
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
-		local prs = pr_lists.list_recent_closed_merged(7) -- Last 7 days
+		local utils = require("revman.utils")
+		local log = require("revman.log")
+		
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+		
+		local prs = pr_lists.list_recent_closed_merged(7, { where = { repo_id = repo_row.id } }) -- Last 7 days
 		if #prs == 0 then
-			local log = require("revman.log")
 			log.notify("No recently closed/merged PRs found", "info")
 			return
 		end
@@ -214,13 +315,28 @@ local function create_commands()
 		local pr_lists = require("revman.db.pr_lists")
 		local note_utils = require("revman.note-utils")
 		local cmd_utils = require("revman.command-utils")
+		local utils = require("revman.utils")
+		local log = require("revman.log")
+		
 		local bufname = vim.api.nvim_buf_get_name(0)
 		local pr_number = cmd_utils.extract_pr_number_from_octobuffer(bufname)
 		if pr_number then
 			local pr = db_prs.get_by_repo_and_number(nil, tonumber(pr_number))
 			note_utils.open_note_for_pr(pr)
 		else
-			local open_prs = pr_lists.list_open()
+			local repo_name = utils.get_current_repo()
+			if not repo_name then
+				log.error("Not in a GitHub repository")
+				return
+			end
+			
+			local repo_row = utils.ensure_repo(repo_name)
+			if not repo_row then
+				log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+				return
+			end
+			
+			local open_prs = pr_lists.list_open({ where = { repo_id = repo_row.id } })
 			local entries = {}
 			for _, pr in ipairs(open_prs) do
 				table.insert(entries, {
@@ -246,8 +362,22 @@ local function create_commands()
 		local pr_lists = require("revman.db.pr_lists")
 		local db_notes = require("revman.db.notes")
 		local note_utils = require("revman.note-utils")
+		local utils = require("revman.utils")
+		local log = require("revman.log")
 
-		local prs = pr_lists.list()
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+
+		local prs = pr_lists.list({ where = { repo_id = repo_row.id } })
 		local prs_with_notes = {}
 		for _, pr in ipairs(prs) do
 			local note = db_notes.get_by_pr_id(pr.id)
@@ -267,9 +397,23 @@ local function create_commands()
 		local picker = require("revman.picker")
 		local pr_lists = require("revman.db.pr_lists")
 		local cmd_utils = require("revman.command-utils")
+		local utils = require("revman.utils")
 		local log = require("revman.log")
+		
+		local repo_name = utils.get_current_repo()
+		if not repo_name then
+			log.error("Not in a GitHub repository")
+			return
+		end
+		
+		local repo_row = utils.ensure_repo(repo_name)
+		if not repo_row then
+			log.error("Current repository is not tracked. Use :RevmanAddRepo to add it.")
+			return
+		end
+		
 		local status_id = db_status.get_id("needs_nudge")
-		local prs = pr_lists.list_with_status({ where = { review_status_id = status_id } })
+		local prs = pr_lists.list_with_status({ where = { review_status_id = status_id, repo_id = repo_row.id } })
 		if #prs == 0 then
 			log.notify("No PRs need a nudge!", "info")
 			log.info("No PRs need a nudge")

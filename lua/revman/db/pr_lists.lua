@@ -112,9 +112,13 @@ function M.list_merged(opts)
 		local github_prs = require("revman.github.prs")
 		local query_opts = {}
 
+		-- Apply where clause from opts if provided
+		if opts and opts.where then
+			query_opts.where = opts.where
+		end
+
 		-- Note: sqlite.lua doesn't support complex OR in where clause well,
-		-- so we query broadly and filter in Lua
-		-- Get all PRs that might be merged (state=MERGED or have merge fields)
+		-- so we query with the where clause and then filter in Lua for merged status
 		if opts and opts.order_by then
 			query_opts.order_by = opts.order_by
 		else
