@@ -10,7 +10,10 @@ local M = {}
 
 function M.get_db()
 	local db_path = config.get().database_path
-	return sqlite:open(db_path)
+	return sqlite:open(db_path, {
+		journal_mode = "wal",
+		busy_timeout = 5000,
+	})
 end
 
 function M.with_db(fn)

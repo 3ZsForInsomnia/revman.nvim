@@ -5,21 +5,31 @@ local M = {}
 
 function M.get_assignees_for_pr(pr_id)
 	return with_db(function(db)
-		local rows = db:select("pr_assignees pa JOIN users u ON pa.user_id = u.id", {
-			select = "u.id, u.username, u.display_name, u.avatar_url",
-			where = { ["pa.pr_id"] = pr_id }
-		})
-		return rows or {}
+		local rows = db:eval(
+			"SELECT u.id, u.username, u.display_name, u.avatar_url "
+				.. "FROM pr_assignees pa JOIN users u ON pa.user_id = u.id "
+				.. "WHERE pa.pr_id = :pr_id",
+			{ pr_id = pr_id }
+		)
+		if type(rows) ~= "table" then
+			return {}
+		end
+		return rows
 	end)
 end
 
 function M.get_prs_for_user(user_id)
 	return with_db(function(db)
-		local rows = db:select("pr_assignees pa JOIN pull_requests pr ON pa.pr_id = pr.id", {
-			select = "pr.*",
-			where = { ["pa.user_id"] = user_id }
-		})
-		return rows or {}
+		local rows = db:eval(
+			"SELECT pr.* "
+				.. "FROM pr_assignees pa JOIN pull_requests pr ON pa.pr_id = pr.id "
+				.. "WHERE pa.user_id = :user_id",
+			{ user_id = user_id }
+		)
+		if type(rows) ~= "table" then
+			return {}
+		end
+		return rows
 	end)
 end
 
