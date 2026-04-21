@@ -1,9 +1,16 @@
 local M = {}
 local with_db = require("revman.db.helpers").with_db
 
+local INSERT_SQL = "INSERT INTO notes (pr_id, content, updated_at) "
+	.. "VALUES (:pr_id, :content, :updated_at)"
+
 function M.add(pr_id, content, updated_at)
 	with_db(function(db)
-		db:insert("notes", { pr_id = pr_id, content = content, updated_at = updated_at })
+		db:eval(INSERT_SQL, {
+			pr_id = pr_id,
+			content = content,
+			updated_at = updated_at,
+		})
 	end)
 end
 
